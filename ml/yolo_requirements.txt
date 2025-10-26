@@ -1,0 +1,21 @@
+# SADS YOLO Detection API Requirements
+
+# Core dependencies
+flask==3.0.0
+flask-cors==4.0.0
+ultralytics==8.1.0
+opencv-python==4.8.1.78
+
+# Additional utilities
+numpy==1.24.3
+pillow==10.1.0
+
+# YOLO will automatically download yolov8s.pt model on first run
+# Or you can manually download from:
+# https://github.com/ultralytics/assets/releases/download/v0.0.0/yolov8s.pt
+
+
+
+
+
+

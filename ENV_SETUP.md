@@ -37,8 +37,3 @@ The frontend fetches the client ID from `/api/auth/google-client-id`, loads Goog
 
 
 
-
-
-
-
-

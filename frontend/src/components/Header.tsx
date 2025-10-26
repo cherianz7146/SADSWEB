@@ -1,5 +1,4 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
 const Header: React.FC = () => {
@@ -26,7 +25,6 @@ const Header: React.FC = () => {
             <NavItem label="FEATURES" href="/features" />
             <NavItem label="REGISTER" href="/register" />
             <NavItem label="LOGIN" href="/login" />
-            <NavItem label="CONTACT" href="#contact" />
           </nav>
           <div className="md:hidden text-white text-sm">MENU</div>
         </div>

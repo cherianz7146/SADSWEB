@@ -1,83 +1,94 @@
 import React, { useEffect, useRef } from 'react';
 import { apiFetch } from '../utils/api';
-import { useAuth } from '../contexts/AuthContext';
+import { User } from '../contexts/AuthContext';
 
 interface Props {
-	// Called after a successful sign-in
-	onSuccess?: () => void;
-	// Disable One Tap when true
-	disabled?: boolean;
+  onSuccess?: (user: User) => void;
+  disabled?: boolean;
 }
 
-const GoogleOneTap: React.FC<Props> = ({ onSuccess, disabled }) => {
-	const initializedRef = useRef(false);
-  const { refresh } = useAuth();
+const SilentGoogleOneTap: React.FC<Props> = ({ onSuccess, disabled }) => {
+  const initializedRef = useRef(false);
+  const cancelledRef = useRef(false);
 
-	useEffect(() => {
-		if (disabled) return;
-		let cancelled = false;
-		(async () => {
-			try {
-				const resp = await apiFetch<{ clientId: string }>(`/api/auth/google-client-id`);
-				const clientId = resp.data.clientId;
-				if (!clientId) return;
+  useEffect(() => {
+    if (disabled || initializedRef.current) return;
+    cancelledRef.current = false;
 
-				await new Promise<void>((resolve, reject) => {
-					if (document.getElementById('google-identity')) return resolve();
-					const script = document.createElement('script');
-					script.src = 'https://accounts.google.com/gsi/client';
-					script.async = true;
-					script.defer = true;
-					script.id = 'google-identity';
-					script.onload = () => resolve();
-					script.onerror = () => reject(new Error('Failed to load Google script'));
-					document.head.appendChild(script);
-				});
+    const loadScript = () =>
+      new Promise<void>((resolve, reject) => {
+        if (document.getElementById('google-identity')) return resolve();
+        const script = document.createElement('script');
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+        script.id = 'google-identity';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load Google script'));
+        document.head.appendChild(script);
+      });
 
-				if (cancelled || initializedRef.current) return;
-				initializedRef.current = true;
+    const initGoogleOneTap = async () => {
+      try {
+        const resp = await apiFetch<{ clientId: string }>('/api/auth/google-client-id');
+        const clientId = resp?.data?.clientId;
+        if (!clientId) return;
 
-				// @ts-expect-error google available at runtime
-				const client = window.google?.accounts?.id;
-				if (!client) return;
+        await loadScript();
+        if (cancelledRef.current) return;
+        initializedRef.current = true;
 
-				client.initialize({
-					client_id: clientId,
-					use_fedcm_for_prompt: true,
-					callback: async (resp: any) => {
-						try {
-							if (resp?.credential) {
-								const result = await apiFetch<{ token: string; user: any }>(`/api/auth/google`, { method: 'POST', body: { idToken: resp.credential } });
-								localStorage.setItem('sads_token', result.data.token);
-								localStorage.setItem('sads_user', JSON.stringify(result.data.user));
-								refresh();
-								onSuccess?.();
-							}
-						} catch (e) {
-							// swallow; user can still use button flow
-						}
-					},
-					auto_select: true,
-					cancel_on_tap_outside: true,
-				});
+        const googleAccounts = (window as any).google?.accounts?.id;
+        if (!googleAccounts) return;
 
-				client.prompt();
-			} catch {}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [disabled, onSuccess]);
+        googleAccounts.initialize({
+          client_id: clientId,
+          callback: async (credentialResponse: any) => {
+            if (!credentialResponse?.credential) return;
+            try {
+              const result = await apiFetch<{ token: string; user: User }>('/api/auth/google', {
+                method: 'POST',
+                body: { idToken: credentialResponse.credential },
+              });
+              const { token, user } = result.data;
+              if (!user) return;
+              localStorage.setItem('sads_token', token);
+              localStorage.setItem('sads_user', JSON.stringify(user));
+              onSuccess?.(user);
+            } catch (err) {
+              console.warn('Failed to handle Google credential:', err);
+            }
+          },
+          auto_select: true,
+          cancel_on_tap_outside: true,
+        });
 
-	return null;
+        try {
+          googleAccounts.prompt((notification: any) => {
+            if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+              console.info('Google One Tap not displayed/skipped');
+            }
+          });
+        } catch (err: any) {
+          if (err.name === 'AbortError') {
+            console.info('Google One Tap prompt aborted (ignored)');
+          } else {
+            console.warn('Google One Tap prompt error (ignored):', err);
+          }
+        }
+      } catch (err) {
+        console.warn('Silent Google One Tap failed to initialize:', err);
+      }
+    };
+
+    initGoogleOneTap();
+
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [disabled, onSuccess]);
+
+  return null;
 };
 
-export default GoogleOneTap;
-
-
-
-
-
-
-
-
+export default SilentGoogleOneTap;

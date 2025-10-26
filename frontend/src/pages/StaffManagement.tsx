@@ -3,13 +3,10 @@ import { motion } from 'framer-motion';
 import { 
   UsersIcon, 
   ShieldCheckIcon, 
-  ChartBarIcon,
   PlusIcon,
   PencilIcon,
   TrashIcon,
-  MapPinIcon,
-  EyeIcon,
-  EyeSlashIcon
+  MapPinIcon
 } from '@heroicons/react/24/outline';
 import BackButton from '../components/BackButton';
 

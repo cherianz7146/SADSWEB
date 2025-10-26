@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { listUsers, createUser, seedUsers } = require('../controllers/usercontroller');
+const { listUsers, createUser, seedUsers, updateUser, deleteUser, updateSelf } = require('../controllers/usercontroller');
 const { createUserRules } = require('../middleware/validation');
 const { asyncHandler } = require('../middleware/errorhandler');
 const { authRequired } = require('../middleware/auth');
@@ -13,5 +13,12 @@ function adminOnly(req, res, next) {
 router.get('/', authRequired, asyncHandler(listUsers));
 router.post('/', authRequired, createUserRules(), asyncHandler(createUser));
 router.post('/seed', authRequired, adminOnly, asyncHandler(seedUsers));
+
+// New routes for updating and deleting users by ID (admin only)
+router.put('/:id', authRequired, adminOnly, asyncHandler(updateUser));
+router.delete('/:id', authRequired, adminOnly, asyncHandler(deleteUser));
+
+// Manager self-update
+router.put('/me/profile', authRequired, asyncHandler(updateSelf));
 
 module.exports = router;

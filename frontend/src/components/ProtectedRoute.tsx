@@ -35,13 +35,8 @@ export const AdminRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
     );
   }
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
-  if (user.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
-  }
+  if (!user) return <Navigate to="/login" replace />;
+  if ((user as any).role !== 'admin') return <Navigate to="/dashboard" replace />;
 
   return <>{children}</>;
 };

@@ -1,0 +1,28 @@
+{
+  "name": "playwright-tests",
+  "version": "1.0.0",
+  "description": "Playwright E2E tests for SADS project",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "test:chromium": "playwright test --project=chromium",
+    "test:firefox": "playwright test --project=firefox",
+    "test:webkit": "playwright test --project=webkit",
+    "test:auth": "playwright test tests/01-auth.spec.ts",
+    "test:manager": "playwright test tests/02-manager-dashboard.spec.ts",
+    "test:admin": "playwright test tests/03-admin-dashboard.spec.ts",
+    "test:detections": "playwright test tests/04-detections-notifications.spec.ts",
+    "test:camera": "playwright test tests/05-camera-detection.spec.ts",
+    "report": "playwright show-report",
+    "codegen": "playwright codegen http://localhost:5173"
+  },
+  "keywords": ["playwright", "testing", "e2e", "sads"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.56.1"
+  }
+}

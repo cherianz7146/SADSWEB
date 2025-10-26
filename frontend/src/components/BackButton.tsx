@@ -1,18 +1,21 @@
 import React from 'react';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 interface BackButtonProps {
   to?: string;
   label?: string;
 }
 
-const BackButton: React.FC<BackButtonProps> = ({ to = '/admin', label = 'Back to Home' }) => {
+const BackButton: React.FC<BackButtonProps> = ({ to, label = 'Back to Home' }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const resolvedTo = to || (location.pathname.startsWith('/dashboard') ? '/dashboard' : '/admin');
 
   return (
     <button
-      onClick={() => navigate(to)}
+      onClick={() => navigate(resolvedTo)}
       className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors mb-6"
     >
       <ArrowLeftIcon className="h-5 w-5" />

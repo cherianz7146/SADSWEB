@@ -23,10 +23,3 @@ function asyncHandler(fn) {
 
 module.exports = { errorHandler, asyncHandler };
 
-
-
-
-
-
-
-

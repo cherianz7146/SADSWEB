@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -10,18 +10,40 @@ import {
   MapPinIcon,
   ClockIcon,
   UserIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  Cog6ToothIcon
 } from '@heroicons/react/24/outline';
+import { apiFetch } from '../utils/api';
 
 const ManagerDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [stats, setStats] = useState({
+    properties: { total: 0, active: 0, totalCameras: 0 },
+    detections: { today: 0, last24h: 0, total: 0 }
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        const response = await apiFetch('/api/stats/manager');
+        setStats(response.data);
+      } catch (error) {
+        console.error('Failed to fetch manager stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
 
   const cards = [
-    { label: 'My Plantation', value: 'Plantation A', icon: MapPinIcon, color: 'text-blue-600 bg-blue-100' },
-    { label: 'Active Cameras', value: '8', icon: CameraIcon, color: 'text-emerald-600 bg-emerald-100' },
-    { label: 'Wildlife Detections', value: '156', icon: ExclamationTriangleIcon, color: 'text-orange-600 bg-orange-100' },
-    { label: 'Deterrent Activations', value: '23', icon: ShieldCheckIcon, color: 'text-red-600 bg-red-100' },
+    { label: 'My Property', value: stats.properties.total.toString(), icon: MapPinIcon, color: 'text-blue-600 bg-blue-100' },
+    { label: 'Active Cameras', value: stats.properties.totalCameras.toString(), icon: CameraIcon, color: 'text-emerald-600 bg-emerald-100' },
+    { label: 'Detections Today', value: stats.detections.today.toString(), icon: ExclamationTriangleIcon, color: 'text-orange-600 bg-orange-100' },
+    { label: 'Total Detections', value: stats.detections.total.toString(), icon: ShieldCheckIcon, color: 'text-red-600 bg-red-100' },
   ];
 
   const recentActivity = [
@@ -40,28 +62,20 @@ const ManagerDashboard: React.FC = () => {
 
   return (
     <div className="p-8">
+      {/* Welcome Section */}
       <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Plantation Manager Dashboard</h1>
-            <p className="text-gray-600">Monitor wildlife deterrent systems for your plantation</p>
-          </div>
-          <div className="flex items-center space-x-3">
-            <div className="flex items-center space-x-3 bg-blue-50 px-4 py-2 rounded-lg">
-              <UserIcon className="h-5 w-5 text-blue-600" />
-              <div>
-                <p className="text-sm font-medium text-blue-900">{user?.name}</p>
-                <p className="text-xs text-blue-600">Plantation Manager</p>
+        <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-8 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name}!</h1>
+              <p className="text-blue-100 text-lg">Monitor your property and wildlife detections</p>
+            </div>
+            <div className="hidden md:block">
+              <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4">
+                <p className="text-sm text-blue-100">Your Property</p>
+                <p className="text-2xl font-bold">{stats.properties.total}</p>
               </div>
             </div>
-            <button
-              onClick={() => { logout(); navigate('/login'); }}
-              className="inline-flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium text-red-700 bg-red-50 hover:bg-red-100 border border-red-100 transition-colors"
-              aria-label="Logout"
-            >
-              <ArrowRightOnRectangleIcon className="h-5 w-5" />
-              <span>Logout</span>
-            </button>
           </div>
         </div>
       </div>
@@ -79,15 +93,16 @@ const ManagerDashboard: React.FC = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: index * 0.1 }}
-            className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
+            className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-all duration-200 hover:-translate-y-1"
           >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600 mb-1">{card.label}</p>
-                <p className="text-2xl font-bold text-gray-900">{card.value}</p>
+                <p className="text-3xl font-bold text-gray-900">{card.value}</p>
+                <p className="text-xs text-gray-500 mt-1">Last updated: Just now</p>
               </div>
-              <div className={`p-3 rounded-xl ${card.color}`}>
-                <card.icon className="h-6 w-6" />
+              <div className={`p-4 rounded-xl ${card.color}`}>
+                <card.icon className="h-8 w-8" />
               </div>
             </div>
           </motion.div>
@@ -95,26 +110,30 @@ const ManagerDashboard: React.FC = () => {
       </motion.div>
 
       <div className="grid lg:grid-cols-2 gap-8">
-        {/* Plantation Fields */}
+        {/* Property Status */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
           className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
         >
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Plantation Fields Status</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Property Status</h2>
+          </div>
           <div className="space-y-4">
             {plantationStats.map((stat, index) => (
-              <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+              <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div>
                   <p className="font-medium text-gray-900">{stat.field}</p>
                   <p className="text-sm text-gray-500">{stat.detections} detections</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">{stat.deterrents} deterrents</p>
-                  <p className={`text-xs font-medium ${
-                    stat.status === 'Active' ? 'text-green-600' : 'text-yellow-600'
-                  }`}>{stat.status}</p>
+                  <p className="text-sm font-medium text-gray-900">{stat.detections} detections</p>
+                  <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                    stat.status === 'Active' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                  }`}>
+                    {stat.status}
+                  </span>
                 </div>
               </div>
             ))}
@@ -128,17 +147,22 @@ const ManagerDashboard: React.FC = () => {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
         >
-          <h2 className="text-xl font-semibold text-gray-900 mb-6">Recent Activity</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold text-gray-900">Recent Activity</h2>
+            <button className="text-sm text-blue-600 hover:text-blue-700 font-medium">
+              View All
+            </button>
+          </div>
           <div className="space-y-4">
             {recentActivity.map((activity, index) => (
-              <div key={index} className="flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors">
-                <div className={`flex-shrink-0 w-2 h-2 rounded-full mt-2 ${
+              <div key={index} className="flex items-start space-x-3 p-4 hover:bg-gray-50 rounded-xl transition-colors border border-gray-100">
+                <div className={`flex-shrink-0 w-3 h-3 rounded-full mt-1.5 ${
                   activity.priority === 'high' ? 'bg-red-500' :
                   activity.priority === 'medium' ? 'bg-yellow-500' : 'bg-green-500'
                 }`}></div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900">{activity.event}</p>
-                  <p className={`text-sm ${
+                  <p className={`text-sm font-medium ${
                     activity.status.includes('activated') ? 'text-red-600' :
                     activity.status.includes('Monitoring') ? 'text-yellow-600' : 'text-green-600'
                   }`}>{activity.status}</p>
@@ -158,29 +182,49 @@ const ManagerDashboard: React.FC = () => {
         className="mt-8 bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
       >
         <h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <button 
-            onClick={() => navigate('/dashboard/camera-feeds')}
-            className="flex items-center space-x-3 p-4 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-colors"
+            onClick={() => navigate('/dashboard/properties')}
+            className="flex items-center space-x-3 p-4 bg-blue-50 text-blue-700 rounded-xl hover:bg-blue-100 transition-all duration-200 hover:scale-105 border border-blue-200"
           >
-            <CameraIcon className="h-6 w-6" />
-            <span className="font-medium">View Camera Feeds</span>
+            <MapPinIcon className="h-6 w-6" />
+            <div className="text-left">
+              <span className="font-medium block">Property</span>
+              <span className="text-xs text-blue-600">View your property</span>
+            </div>
           </button>
           
           <button 
-            onClick={() => navigate('/dashboard/reports')}
-            className="flex items-center space-x-3 p-4 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors"
+            onClick={() => navigate('/dashboard/detection-report')}
+            className="flex items-center space-x-3 p-4 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-all duration-200 hover:scale-105 border border-green-200"
           >
             <ChartBarIcon className="h-6 w-6" />
-            <span className="font-medium">View Reports</span>
+            <div className="text-left">
+              <span className="font-medium block">Reports</span>
+              <span className="text-xs text-green-600">View analytics</span>
+            </div>
           </button>
           
           <button 
             onClick={() => navigate('/dashboard/notifications')}
-            className="flex items-center space-x-3 p-4 bg-red-50 text-red-700 rounded-xl hover:bg-red-100 transition-colors"
+            className="flex items-center space-x-3 p-4 bg-orange-50 text-orange-700 rounded-xl hover:bg-orange-100 transition-all duration-200 hover:scale-105 border border-orange-200"
           >
             <ExclamationTriangleIcon className="h-6 w-6" />
-            <span className="font-medium">Check Alerts</span>
+            <div className="text-left">
+              <span className="font-medium block">Alerts</span>
+              <span className="text-xs text-orange-600">Check notifications</span>
+            </div>
+          </button>
+
+          <button 
+            onClick={() => navigate('/dashboard/settings')}
+            className="flex items-center space-x-3 p-4 bg-purple-50 text-purple-700 rounded-xl hover:bg-purple-100 transition-all duration-200 hover:scale-105 border border-purple-200"
+          >
+            <Cog6ToothIcon className="h-6 w-6" />
+            <div className="text-left">
+              <span className="font-medium block">Settings</span>
+              <span className="text-xs text-purple-600">Configure system</span>
+            </div>
           </button>
         </div>
       </motion.div>

@@ -1,8 +1,9 @@
 import React from 'react';
+import Footer from '../components/Footer';
 
 const FeaturesPage: React.FC = () => {
 	return (
-		<div className="min-h-screen bg-gray-50">
+		<div className="min-h-screen bg-gray-50 flex flex-col">
 			{/* Hero banner */}
 			<section className="relative h-[360px] w-full">
 				<img
@@ -75,6 +76,7 @@ const FeaturesPage: React.FC = () => {
 					</div>
 				</div>
 			</section>
+			<Footer />
 		</div>
 	);
 };

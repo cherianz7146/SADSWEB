@@ -110,7 +110,7 @@ const Detector: React.FC<DetectorProps> = ({
 		};
 		raf = requestAnimationFrame(detect);
 		return () => cancelAnimationFrame(raf);
-	}, [enabled, model, classMap]);
+	}, [enabled, model, classMap, onDetection]);
 
 	return (
 		<div className="space-y-3">

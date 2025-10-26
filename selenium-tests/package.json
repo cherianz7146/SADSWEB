@@ -1,0 +1,26 @@
+{
+  "name": "sads-selenium-tests",
+  "version": "1.0.0",
+  "description": "Selenium tests for Smart Animal Deterrent System",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha tests/**/*.js",
+    "test:chrome": "mocha tests/**/*.js --browser=chrome",
+    "test:firefox": "mocha tests/**/*.js --browser=firefox"
+  },
+  "keywords": [
+    "selenium",
+    "testing",
+    "e2e",
+    "sads"
+  ],
+  "author": "SADS Team",
+  "license": "MIT",
+  "devDependencies": {
+    "selenium-webdriver": "^4.25.0",
+    "mocha": "^10.7.3",
+    "chai": "^4.5.0",
+    "chromedriver": "^130.0.0",
+    "geckodriver": "^4.4.4"
+  }
+}

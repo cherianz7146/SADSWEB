@@ -1,99 +1,79 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { SpeakerWaveIcon, BoltIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
-import type { DetectionEvent } from './Detector';
+import React from 'react';
+import { type DetectionEvent } from './Detector';
 
 interface DeterrentSimulatorProps {
-	active: boolean;
-	lastDetection?: DetectionEvent | null;
-	isTarget: (label: string) => boolean;
+  active: boolean;
+  lastDetection: DetectionEvent | null;
+  isTarget: (label: string) => boolean;
 }
 
-const beepDataUri = (() => {
-	// Simple 440Hz beep for ~200ms using WebAudio rendered to data URI
-	const duration = 0.2;
-	const sampleRate = 44100;
-	const length = Math.floor(duration * sampleRate);
-	const freq = 880;
-	const data = new Int16Array(length);
-	for (let i = 0; i < length; i++) {
-		const t = i / sampleRate;
-		const v = Math.sin(2 * Math.PI * freq * t) * 0.4;
-		data[i] = Math.max(-1, Math.min(1, v)) * 0x7fff;
-	}
-	let wav = 'data:audio/wav;base64,';
-	function toBytes(num: number, bytes: number) {
-		let res = '';
-		for (let i = 0; i < bytes; i++) res += String.fromCharCode((num >> (8 * i)) & 0xff);
-		return res;
-	}
-	const header =
-		'RIFF' + toBytes(36 + data.length * 2, 4) + 'WAVEfmt ' + toBytes(16, 4) + toBytes(1, 2) + toBytes(1, 2) +
-		toBytes(sampleRate, 4) + toBytes(sampleRate * 2, 4) + toBytes(2, 2) + toBytes(16, 2) + 'data' + toBytes(data.length * 2, 4);
-	let body = '';
-	for (let i = 0; i < data.length; i++) {
-		body += String.fromCharCode(data[i] & 0xff, (data[i] >> 8) & 0xff);
-	}
-	return wav + btoa(header + body);
-})();
-
 const DeterrentSimulator: React.FC<DeterrentSimulatorProps> = ({ active, lastDetection, isTarget }) => {
-	const [isStrobing, setIsStrobing] = useState(false);
-	const audioRef = useRef<HTMLAudioElement | null>(null);
-	const shouldTrigger = useMemo(() => {
-		if (!active || !lastDetection) return false;
-		if (!isTarget(lastDetection.label)) return false;
-		return lastDetection.probability >= 0.6;
-	}, [active, lastDetection, isTarget]);
+  if (!active) {
+    return (
+      <div className="bg-gray-50 rounded-xl p-6 text-center">
+        <div className="text-gray-500 mb-2">System is idle</div>
+        <div className="text-sm text-gray-400">Enable detection to start deterrent simulation</div>
+      </div>
+    );
+  }
 
-	useEffect(() => {
-		if (!shouldTrigger) return;
-		// Play sound
-		if (audioRef.current) {
-			audioRef.current.currentTime = 0;
-			audioRef.current.play().catch(() => {});
-		}
-		// Strobe for 1.2s
-		setIsStrobing(true);
-		const t = setTimeout(() => setIsStrobing(false), 1200);
-		return () => clearTimeout(t);
-	}, [shouldTrigger]);
+  if (!lastDetection) {
+    return (
+      <div className="bg-blue-50 rounded-xl p-6 text-center">
+        <div className="text-blue-600 mb-2">Waiting for detection...</div>
+        <div className="text-sm text-blue-400">System is monitoring for animal activity</div>
+      </div>
+    );
+  }
 
-	return (
-		<div className="relative">
-			<div className="grid grid-cols-3 gap-3">
-				<div className={`p-3 rounded-xl border ${shouldTrigger ? 'bg-rose-50 border-rose-200' : 'bg-gray-50 border-gray-200'}`}>
-					<div className="flex items-center space-x-2 text-gray-800">
-						<SpeakerWaveIcon className="h-5 w-5" />
-						<span className="text-sm font-medium">Warning Sound</span>
-					</div>
-				</div>
-				<div className={`p-3 rounded-xl border ${isStrobing ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}`}>
-					<div className="flex items-center space-x-2 text-gray-800">
-						<BoltIcon className="h-5 w-5" />
-						<span className="text-sm font-medium">Strobe Light</span>
-					</div>
-				</div>
-				<div className={`p-3 rounded-xl border ${shouldTrigger ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'}`}>
-					<div className="flex items-center space-x-2 text-gray-800">
-						<ExclamationTriangleIcon className="h-5 w-5" />
-						<span className="text-sm font-medium">On-screen Alert</span>
-					</div>
-				</div>
-			</div>
-			{isStrobing && (
-				<div className="absolute inset-0 pointer-events-none animate-pulse" style={{ background: 'rgba(255,255,200,0.35)' }}></div>
-			)}
-			<audio ref={audioRef} src={beepDataUri} preload="auto" />
-		</div>
-	);
+  const isAnimalTarget = isTarget(lastDetection.label);
+  const confidenceLevel = lastDetection.probability;
+
+  return (
+    <div className="bg-gradient-to-br from-emerald-50 to-cyan-50 rounded-xl p-6 border border-emerald-100">
+      <h3 className="font-semibold text-gray-900 mb-4">Deterrent Response</h3>
+      
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">Detected Animal</span>
+          <span className="font-medium capitalize">{lastDetection.label}</span>
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">Confidence</span>
+          <span className="font-medium">{(confidenceLevel * 100).toFixed(1)}%</span>
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-gray-600">Target Status</span>
+          <span className={`px-2 py-1 rounded text-xs font-medium ${isAnimalTarget ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-800'}`}>
+            {isAnimalTarget ? 'TARGET' : 'IGNORE'}
+          </span>
+        </div>
+        
+        {isAnimalTarget && confidenceLevel >= 0.6 && (
+          <div className="mt-4 p-3 bg-emerald-100 rounded-lg border border-emerald-200">
+            <div className="text-emerald-800 font-medium">Deterrent Activated!</div>
+            <div className="text-sm text-emerald-600">Spraying deterrent at {lastDetection.label}</div>
+          </div>
+        )}
+        
+        {isAnimalTarget && confidenceLevel < 0.6 && (
+          <div className="mt-4 p-3 bg-yellow-100 rounded-lg border border-yellow-200">
+            <div className="text-yellow-800 font-medium">Low Confidence</div>
+            <div className="text-sm text-yellow-600">Monitoring {lastDetection.label}</div>
+          </div>
+        )}
+        
+        {!isAnimalTarget && (
+          <div className="mt-4 p-3 bg-gray-100 rounded-lg border border-gray-200">
+            <div className="text-gray-800 font-medium">Non-Target Animal</div>
+            <div className="text-sm text-gray-600">No deterrent action required</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export default DeterrentSimulator;
-
-
-
-
-
-
-
-

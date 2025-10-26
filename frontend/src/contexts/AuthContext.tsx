@@ -1,34 +1,33 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { apiFetch } from '../utils/api';
 
-interface User {
+export interface UserPermissions {
+  canViewCameras: boolean;
+  canViewReports: boolean;
+  canManageSettings: boolean;
+  canManageStaff: boolean;
+}
+
+export interface User {
   id: string;
+  userId?: string;
   name: string;
   email: string;
   avatar?: string;
   role?: 'manager' | 'admin';
-  plantation?: {
-    name: string;
-    location?: string;
-    fields?: string[];
-  };
-  permissions?: {
-    canViewCameras: boolean;
-    canViewReports: boolean;
-    canManageSettings: boolean;
-    canManageStaff: boolean;
-  };
+  permissions?: UserPermissions;
+  isActive?: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
-  registerWithGoogle: () => Promise<void>;
+  login: (email: string, password: string) => Promise<User>;
+  loginWithGoogle: () => Promise<User>;
+  register: (name: string, email: string, password: string, plantation?: string, phone?: string) => Promise<User>;
+  registerWithGoogle: () => Promise<User>;
   logout: () => void;
   loading: boolean;
-  refresh: () => void;
+  setUser: React.Dispatch<React.SetStateAction<User | null>>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -50,48 +49,65 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in from localStorage
-    const savedUser = localStorage.getItem('sads_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setLoading(false);
+    // Bootstrap from token via /api/auth/me
+    const bootstrap = async () => {
+      try {
+        const token = localStorage.getItem('sads_token');
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+        const resp = await apiFetch<User>('/api/auth/me');
+        setUser(resp.data);
+        localStorage.setItem('sads_user', JSON.stringify(resp.data));
+      } catch (error) {
+        console.warn('Auth bootstrap failed:', error);
+        localStorage.removeItem('sads_token');
+        localStorage.removeItem('sads_user');
+      } finally {
+        setLoading(false);
+      }
+    };
+    bootstrap();
   }, []);
 
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = async (email: string, password: string): Promise<User> => {
     setLoading(true);
     try {
       const resp = await apiFetch<{ token: string; user: User }>(`/api/auth/login`, { method: 'POST', body: { email, password } });
       setUser(resp.data.user);
       localStorage.setItem('sads_user', JSON.stringify(resp.data.user));
       localStorage.setItem('sads_token', resp.data.token);
+      return resp.data.user;
     } finally {
-    setLoading(false);
+      setLoading(false);
     }
   };
 
-  const loginWithGoogle = async (): Promise<void> => {
+  const loginWithGoogle = async (): Promise<User> => {
     setLoading(true);
     try {
       const result = await handleGoogleAuth();
       setUser(result.user);
       localStorage.setItem('sads_user', JSON.stringify(result.user));
       localStorage.setItem('sads_token', result.token);
+      return result.user;
     } catch (error) {
       console.error('Google login failed:', error);
       throw error;
     } finally {
-    setLoading(false);
+      setLoading(false);
     }
   };
 
-  const registerWithGoogle = async (): Promise<void> => {
+  const registerWithGoogle = async (): Promise<User> => {
     setLoading(true);
     try {
       const result = await handleGoogleAuth();
       setUser(result.user);
       localStorage.setItem('sads_user', JSON.stringify(result.user));
       localStorage.setItem('sads_token', result.token);
+      return result.user;
     } catch (error) {
       console.error('Google registration failed:', error);
       throw error;
@@ -107,6 +123,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       clientId = resp.data.clientId;
     } catch {}
     if (!clientId) throw new Error('Google Client ID not configured');
+    
+    // Check if script is already loaded
     await new Promise<void>((resolve, reject) => {
       if (document.getElementById('google-identity')) return resolve();
       const script = document.createElement('script');
@@ -118,58 +136,61 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       script.onerror = () => reject(new Error('Failed to load Google script'));
       document.head.appendChild(script);
     });
-    // @ts-expect-error Google types loaded at runtime
+    
     const token = await new Promise<string>((resolve, reject) => {
-      // @ts-expect-error google available after script load
-      if (!window.google || !window.google.accounts || !clientId) {
+      const w: any = window as any;
+      if (!w.google || !w.google.accounts || !clientId) {
         reject(new Error('Google Identity not available'));
         return;
       }
-      // @ts-expect-error
-      const client = window.google.accounts.id;
-      client.initialize({
-        client_id: clientId,
-        use_fedcm_for_prompt: true,
-        callback: (resp: any) => {
-          if (resp && resp.credential) {
-            resolve(resp.credential);
+      
+      try {
+        const client = w.google.accounts.id;
+        client.initialize({ 
+          client_id: clientId, 
+          callback: (resp: any) => {
+            if (resp && resp.credential) {
+              resolve(resp.credential);
+            } else {
+              reject(new Error('No credential from Google'));
+            }
           }
-        }
-      });
-      let rejected = false;
-      const timeout = setTimeout(() => {
-        if (!rejected) {
-          rejected = true;
-          reject(new Error('Google One Tap not shown or skipped'));
-        }
-      }, 4000);
-      client.prompt((notification: any) => {
-        // Don't immediately reject; allow FedCM/popup fallbacks
-        if (notification?.isDisplayed?.()) return;
-        if (notification?.isDismissedMoment?.()) return;
-        if (notification?.isNotDisplayed?.() || notification?.isSkippedMoment?.()) {
-          if (!rejected) {
-            rejected = true;
-            clearTimeout(timeout);
-            reject(new Error('Google One Tap not shown or skipped'));
-          }
-        }
-      });
+        });
+        
+        // Trigger the prompt
+        client.prompt();
+      } catch (error: any) {
+        reject(new Error(`Google Sign-In initialization failed: ${error.message}`));
+      }
     });
-    const response = await apiFetch<{ token: string; user: User }>(`/api/auth/google`, { method: 'POST', body: { idToken: token } });
+    
+    const response = await apiFetch<{ token: string; user: User }>(`/api/auth/google`, { 
+      method: 'POST', 
+      body: { idToken: token } 
+    });
+    
     const data = response.data;
     return { user: data.user, token: data.token };
   };
 
-  const register = async (name: string, email: string, password: string): Promise<void> => {
+  const register = async (name: string, email: string, password: string, plantation?: string, phone?: string): Promise<User> => {
     setLoading(true);
     try {
-      const resp = await apiFetch<{ token: string; user: User }>(`/api/auth/register`, { method: 'POST', body: { name, email, password } });
+      console.log('Registering user:', { name, email, plantation, phone });
+      const resp = await apiFetch<{ token: string; user: User }>(`/api/auth/register`, { 
+        method: 'POST', 
+        body: { name, email, password, plantation, phone } 
+      });
+      console.log('Registration response:', resp);
       setUser(resp.data.user);
       localStorage.setItem('sads_user', JSON.stringify(resp.data.user));
       localStorage.setItem('sads_token', resp.data.token);
+      return resp.data.user;
+    } catch (error) {
+      console.error('Registration error in AuthContext:', error);
+      throw error;
     } finally {
-    setLoading(false);
+      setLoading(false);
     }
   };
 
@@ -177,13 +198,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(null);
     localStorage.removeItem('sads_user');
     localStorage.removeItem('sads_token');
-  };
-
-  const refresh = (): void => {
-    const savedUser = localStorage.getItem('sads_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
   };
 
   const value: AuthContextType = {
@@ -194,7 +208,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     registerWithGoogle,
     logout,
     loading,
-    refresh,
+    setUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

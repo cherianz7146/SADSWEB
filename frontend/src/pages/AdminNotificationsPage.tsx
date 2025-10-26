@@ -1,316 +1,411 @@
-import React, { useState } from 'react';
-import BackButton from '../components/BackButton';
+import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { 
   BellIcon, 
-  PaperAirplaneIcon, 
-  EnvelopeIcon,
-  ClockIcon,
-  CheckCircleIcon,
   ExclamationTriangleIcon,
-  PlusIcon,
-  MagnifyingGlassIcon
+  ClockIcon,
+  MapPinIcon,
+  CameraIcon,
+  EnvelopeIcon,
+  UserGroupIcon,
+  PaperAirplaneIcon,
+  BuildingOfficeIcon
 } from '@heroicons/react/24/outline';
+import BackButton from '../components/BackButton';
+import { apiFetch } from '../utils/api';
 
-interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: 'info' | 'warning' | 'success' | 'error';
-  recipient: string;
-  status: 'sent' | 'pending' | 'failed';
-  timestamp: string;
-  priority: 'low' | 'medium' | 'high';
+interface Detection {
+  _id: string;
+  label: string;
+  probability: number;
+  location?: string;
+  propertyName?: string;
+  source?: string;
+  detectedAt: string;
+  createdAt: string;
+  userId?: {
+    userId: string;
+    name: string;
+    email: string;
+    role: string;
+  };
+}
+
+interface Manager {
+  _id: string;
+  name: string;
+  email: string;
 }
 
 const AdminNotificationsPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'send' | 'history'>('send');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [notifications] = useState<Notification[]>([
-    {
-      id: '1',
-      title: 'System Maintenance Alert',
-      message: 'Scheduled maintenance will occur tonight from 11 PM to 1 AM',
-      type: 'warning',
-      recipient: 'All Users',
-      status: 'sent',
-      timestamp: '2024-01-15T10:30:00Z',
-      priority: 'high'
-    },
-    {
-      id: '2',
-      title: 'Device Offline Alert',
-      message: 'Camera 3 in Field C has gone offline. Please check connection.',
-      type: 'error',
-      recipient: 'Field Technicians',
-      status: 'sent',
-      timestamp: '2024-01-15T09:15:00Z',
-      priority: 'high'
-    },
-    {
-      id: '3',
-      title: 'Weekly Report Available',
-      message: 'Your weekly deterrent activity report is now available.',
-      type: 'info',
-      recipient: 'All Users',
-      status: 'pending',
-      timestamp: '2024-01-15T08:45:00Z',
-      priority: 'medium'
-    },
-    {
-      id: '4',
-      title: 'Successful Detection',
-      message: 'Wild boar detected and successfully deterred in Field A.',
-      type: 'success',
-      recipient: 'Field Managers',
-      status: 'sent',
-      timestamp: '2024-01-14T16:20:00Z',
-      priority: 'low'
-    }
-  ]);
+  const [detections, setDetections] = useState<Detection[]>([]);
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [selectedManagers, setSelectedManagers] = useState<string[]>([]);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailSuccess, setEmailSuccess] = useState('');
+  const [emailError, setEmailError] = useState('');
 
-  const [newNotification, setNewNotification] = useState({
-    title: '',
-    message: '',
-    type: 'info' as const,
-    recipient: '',
-    priority: 'medium' as const
-  });
-
-  const filteredNotifications = notifications.filter(notification =>
-    notification.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    notification.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    notification.recipient.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'success':
-        return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
-      case 'warning':
-        return <ExclamationTriangleIcon className="h-5 w-5 text-yellow-500" />;
-      case 'error':
-        return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
-      default:
-        return <BellIcon className="h-5 w-5 text-blue-500" />;
+  const fetchDetections = async () => {
+    try {
+      const response = await apiFetch<{ success: boolean; data: Detection[] }>('/api/detections');
+      setDetections(response.data.data || []);
+    } catch (error) {
+      console.error('Failed to fetch detections:', error);
+      setDetections([]);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'sent':
-        return 'bg-green-100 text-green-800';
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'failed':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  const fetchManagers = async () => {
+    try {
+      const response = await apiFetch<Manager[]>('/api/users?role=user');
+      setManagers(response.data);
+    } catch (error) {
+      console.error('Failed to fetch managers:', error);
+      setManagers([]);
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'bg-red-100 text-red-800';
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'low':
-        return 'bg-green-100 text-green-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  useEffect(() => {
+    fetchDetections();
+    fetchManagers();
+  }, []);
+
+  const handleSendEmail = async () => {
+    if (!emailSubject || !emailMessage || selectedManagers.length === 0) {
+      setEmailError('Please fill in all fields and select at least one manager');
+      return;
+    }
+
+    setSendingEmail(true);
+    setEmailError('');
+    setEmailSuccess('');
+
+    try {
+      await apiFetch('/api/notifications/send-email', {
+        method: 'POST',
+        body: {
+          managerIds: selectedManagers,
+          subject: emailSubject,
+          message: emailMessage
+        }
+      });
+
+      setEmailSuccess('Email sent successfully to selected managers!');
+      setEmailSubject('');
+      setEmailMessage('');
+      setSelectedManagers([]);
+      
+      setTimeout(() => {
+        setShowEmailModal(false);
+        setEmailSuccess('');
+      }, 2000);
+    } catch (error: any) {
+      setEmailError(error.message || 'Failed to send email');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
-  const handleSendNotification = () => {
-    // Handle sending notification logic here
-    console.log('Sending notification:', newNotification);
-    // Reset form
-    setNewNotification({
-      title: '',
-      message: '',
-      type: 'info',
-      recipient: '',
-      priority: 'medium'
-    });
+  const toggleManagerSelection = (managerId: string) => {
+    setSelectedManagers(prev => 
+      prev.includes(managerId)
+        ? prev.filter(id => id !== managerId)
+        : [...prev, managerId]
+    );
   };
+
+  const selectAllManagers = () => {
+    setSelectedManagers(managers.map(m => m._id));
+  };
+
+  const deselectAllManagers = () => {
+    setSelectedManagers([]);
+  };
+
+  const getTimeAgo = (timestamp: string) => {
+    const now = new Date();
+    const time = new Date(timestamp);
+    const diffMs = now.getTime() - time.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+  };
+
+  const highConfidenceCount = detections.filter(d => d.probability >= 0.90).length;
+
+  const stats = [
+    { label: 'Total Detections', value: detections.length, icon: BellIcon, color: 'text-blue-600 bg-blue-100' },
+    { label: 'High Confidence', value: highConfidenceCount, icon: ExclamationTriangleIcon, color: 'text-red-600 bg-red-100' },
+    { label: 'Total Managers', value: managers.length, icon: UserGroupIcon, color: 'text-green-600 bg-green-100' },
+    { label: 'Email Notifications', value: 'Ready', icon: EnvelopeIcon, color: 'text-purple-600 bg-purple-100' },
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
-          <p className="text-gray-600">Send notifications and manage notification history</p>
-        </div>
-        <BackButton />
+    <div className="p-8">
+      <BackButton />
+      
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Notifications</h1>
+        <p className="text-gray-600">Monitor detections and send notifications to managers</p>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="border-b border-gray-200">
-          <nav className="flex space-x-8 px-6">
-            <button
-              onClick={() => setActiveTab('send')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'send'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Send Notification
-            </button>
-            <button
-              onClick={() => setActiveTab('history')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'history'
-                  ? 'border-indigo-500 text-indigo-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Notification History
-            </button>
-          </nav>
-        </div>
-
-        <div className="p-6">
-          {activeTab === 'send' ? (
-            /* Send Notification Form */
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Notification Title
-                  </label>
-                  <input
-                    type="text"
-                    value={newNotification.title}
-                    onChange={(e) => setNewNotification({ ...newNotification, title: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    placeholder="Enter notification title"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Recipient
-                  </label>
-                  <select
-                    value={newNotification.recipient}
-                    onChange={(e) => setNewNotification({ ...newNotification, recipient: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  >
-                    <option value="">Select recipient</option>
-                    <option value="All Users">All Users</option>
-                    <option value="Field Technicians">Field Technicians</option>
-                    <option value="Field Managers">Field Managers</option>
-                    <option value="System Administrators">System Administrators</option>
-                  </select>
-                </div>
-              </div>
-
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {stats.map((stat, index) => (
+          <motion.div
+            key={index}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: index * 0.1 }}
+            className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
+          >
+            <div className="flex items-center justify-between">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Message
-                </label>
-                <textarea
-                  value={newNotification.message}
-                  onChange={(e) => setNewNotification({ ...newNotification, message: e.target.value })}
-                  rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="Enter notification message"
-                />
+                <p className="text-sm font-medium text-gray-600 mb-1">{stat.label}</p>
+                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
               </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Type
-                  </label>
-                  <select
-                    value={newNotification.type}
-                    onChange={(e) => setNewNotification({ ...newNotification, type: e.target.value as any })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  >
-                    <option value="info">Information</option>
-                    <option value="warning">Warning</option>
-                    <option value="success">Success</option>
-                    <option value="error">Error</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Priority
-                  </label>
-                  <select
-                    value={newNotification.priority}
-                    onChange={(e) => setNewNotification({ ...newNotification, priority: e.target.value as any })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <button
-                  onClick={handleSendNotification}
-                  className="flex items-center space-x-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
-                >
-                  <PaperAirplaneIcon className="h-5 w-5" />
-                  <span>Send Notification</span>
-                </button>
+              <div className={`p-3 rounded-xl ${stat.color}`}>
+                <stat.icon className="h-6 w-6" />
               </div>
             </div>
-          ) : (
-            /* Notification History */
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex-1 max-w-md">
-                  <div className="relative">
-                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search notifications..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
+          </motion.div>
+        ))}
+      </div>
 
-              <div className="space-y-3">
-                {filteredNotifications.map((notification) => (
-                  <div key={notification.id} className="bg-gray-50 rounded-lg p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-start space-x-3">
-                        {getTypeIcon(notification.type)}
-                        <div className="flex-1">
-                          <h3 className="font-medium text-gray-900">{notification.title}</h3>
-                          <p className="text-sm text-gray-600 mt-1">{notification.message}</p>
-                          <div className="flex items-center space-x-4 mt-2 text-xs text-gray-500">
-                            <span>To: {notification.recipient}</span>
-                            <span>{new Date(notification.timestamp).toLocaleString()}</span>
-                          </div>
+      {/* Send Email Button */}
+      <div className="mb-8">
+        <button
+          onClick={() => setShowEmailModal(true)}
+          className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2"
+        >
+          <EnvelopeIcon className="h-5 w-5" />
+          Send Email to Managers
+        </button>
+      </div>
+
+      {/* Detections List */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-xl font-semibold text-gray-900">
+            Recent Detections ({detections.length})
+          </h2>
+        </div>
+
+        <div className="divide-y divide-gray-200">
+          {detections.map((detection, index) => (
+            <motion.div
+              key={detection._id}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: index * 0.05 }}
+              className="p-6 hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-start space-x-4">
+                <div className="p-3 rounded-xl bg-red-100 text-red-600">
+                  <ExclamationTriangleIcon className="h-6 w-6" />
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      {detection.label.charAt(0).toUpperCase() + detection.label.slice(1)} Detected
+                    </h3>
+                  </div>
+
+                  <p className="text-gray-600 mb-3">
+                    A {detection.label} has been detected. Email notifications have been sent to relevant managers.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                    {detection.userId && (
+                      <div className="flex items-start space-x-2">
+                        <div className="h-5 w-5 flex items-center justify-center text-xs font-bold text-emerald-600 bg-emerald-100 rounded flex-shrink-0 mt-0.5">
+                          ID
+                        </div>
+                        <div>
+                          <span className="text-gray-500">User ID:</span>
+                          <span className="ml-1 font-bold text-emerald-600">{detection.userId.userId}</span>
+                          <span className="ml-1 text-gray-400">({detection.userId.name})</span>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(notification.status)}`}>
-                          {notification.status}
-                        </span>
-                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getPriorityColor(notification.priority)}`}>
-                          {notification.priority}
-                        </span>
+                    )}
+                    
+                    <div className="flex items-start space-x-2">
+                      <BuildingOfficeIcon className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-gray-500">Property:</span>
+                        <span className="ml-1 font-medium text-gray-900">{detection.propertyName || 'N/A'}</span>
+                      </div>
+                    </div>
+                    
+                    {detection.location && (
+                      <div className="flex items-start space-x-2">
+                        <MapPinIcon className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <span className="text-gray-500">Location:</span>
+                          <span className="ml-1 font-medium text-gray-900">{detection.location}</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="flex items-start space-x-2">
+                      <ClockIcon className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-gray-500">Time:</span>
+                        <span className="ml-1 font-medium text-gray-900">{new Date(detection.detectedAt).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-start space-x-2">
+                      <CameraIcon className="h-5 w-5 text-gray-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-gray-500">Source:</span>
+                        <span className="ml-1 font-medium text-gray-900">{detection.source === 'browser-camera' ? 'Browser Camera' : detection.source || 'Camera'}</span>
                       </div>
                     </div>
                   </div>
-                ))}
+
+                  <div className="mt-3 text-xs text-gray-400">
+                    {getTimeAgo(detection.detectedAt)}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {detections.length === 0 && (
+          <div className="p-12 text-center">
+            <BellIcon className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No detections found</h3>
+            <p className="text-gray-500">No detections available</p>
+          </div>
+        )}
+      </div>
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-2xl p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+          >
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Send Email Notification</h2>
+
+            {emailError && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+                {emailError}
+              </div>
+            )}
+
+            {emailSuccess && (
+              <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
+                {emailSuccess}
+              </div>
+            )}
+
+            {/* Manager Selection */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <label className="block text-sm font-medium text-gray-700">
+                  Select Managers ({selectedManagers.length} selected)
+                </label>
+                <div className="space-x-2">
+                  <button
+                    onClick={selectAllManagers}
+                    className="text-sm text-indigo-600 hover:text-indigo-700"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    onClick={deselectAllManagers}
+                    className="text-sm text-gray-600 hover:text-gray-700"
+                  >
+                    Deselect All
+                  </button>
+                </div>
+              </div>
+              <div className="border border-gray-300 rounded-lg p-4 max-h-40 overflow-y-auto">
+                {managers.length === 0 ? (
+                  <p className="text-gray-500 text-sm">No managers available</p>
+                ) : (
+                  managers.map(manager => (
+                    <label key={manager._id} className="flex items-center mb-2 cursor-pointer hover:bg-gray-50 p-2 rounded">
+                      <input
+                        type="checkbox"
+                        checked={selectedManagers.includes(manager._id)}
+                        onChange={() => toggleManagerSelection(manager._id)}
+                        className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 mr-3"
+                      />
+                      <span className="text-sm text-gray-700">{manager.name} ({manager.email})</span>
+                    </label>
+                  ))
+                )}
               </div>
             </div>
-          )}
+
+            {/* Email Subject */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Subject
+              </label>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="Enter email subject"
+              />
+            </div>
+
+            {/* Email Message */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Message
+              </label>
+              <textarea
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                rows={6}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="Enter your message..."
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex justify-end gap-4">
+              <button
+                onClick={() => {
+                  setShowEmailModal(false);
+                  setEmailError('');
+                  setEmailSuccess('');
+                }}
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+                disabled={sendingEmail}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendEmail}
+                disabled={sendingEmail}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2 disabled:opacity-50"
+              >
+                <PaperAirplaneIcon className="h-5 w-5" />
+                {sendingEmail ? 'Sending...' : 'Send Email'}
+              </button>
+            </div>
+          </motion.div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
