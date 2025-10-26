@@ -78,6 +78,39 @@ async function createDetection(req, res) {
       try {
         // Get all admins
         const admins = await User.find({ role: 'admin' });
+        const Notification = require('../models/notification');
+        
+        // Create notification message
+        const animalType = det.label.toUpperCase();
+        const confidence = Math.round(det.probability * 100);
+        const notificationTitle = `🚨 ${animalType} Detected`;
+        const notificationMessage = `${animalType} detected at ${propertyName} with ${confidence}% confidence. Location: ${propertyLocation}`;
+        
+        // Create notification for the detecting user
+        await Notification.create({
+          recipientId: user._id,
+          senderId: user._id, // Self-notification from detection
+          title: notificationTitle,
+          message: notificationMessage,
+          type: 'detection',
+          priority: probability >= 0.8 ? 'critical' : probability >= 0.6 ? 'high' : 'medium',
+          relatedDetectionId: det._id
+        });
+        
+        // Create notifications for all admins
+        for (const admin of admins) {
+          await Notification.create({
+            recipientId: admin._id,
+            senderId: user._id,
+            title: notificationTitle,
+            message: notificationMessage,
+            type: 'detection',
+            priority: probability >= 0.8 ? 'critical' : probability >= 0.6 ? 'high' : 'medium',
+            relatedDetectionId: det._id
+          });
+        }
+        
+        console.log(`✅ Notification documents created for detection ${det._id}`);
         
         // Send email notifications
         const { notifyAnimalDetection } = require('../services/emailservices');

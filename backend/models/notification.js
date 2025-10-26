@@ -31,15 +31,21 @@ const notificationSchema = new mongoose.Schema({
   // Type of notification
   type: {
     type: String,
-    enum: ['admin', 'system', 'alert', 'info'],
+    enum: ['admin', 'system', 'alert', 'info', 'detection'],
     default: 'admin'
   },
   
   // Priority level
   priority: {
     type: String,
-    enum: ['high', 'medium', 'low'],
+    enum: ['critical', 'high', 'medium', 'low'],
     default: 'medium'
+  },
+  
+  // Related detection (if this notification is about a detection)
+  relatedDetectionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Detection'
   },
   
   // Read status

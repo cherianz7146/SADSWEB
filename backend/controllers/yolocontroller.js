@@ -105,6 +105,41 @@ exports.verifyWithYolo = async (req, res) => {
         // Send notification for high-confidence detections
         if (detection.confidence >= 70) {
           try {
+            // Create notification documents
+            const Notification = require('../models/notification');
+            const User = require('../models/user');
+            
+            const animalType = detection.name.toUpperCase();
+            const confidence = Math.round(detection.confidence);
+            const notificationTitle = `🚨 ${animalType} Detected (YOLO)`;
+            const notificationMessage = `${animalType} detected with ${confidence}% confidence via YOLO verification.`;
+            
+            // Create notification for the user
+            await Notification.create({
+              recipientId: req.user.id,
+              senderId: req.user.id,
+              title: notificationTitle,
+              message: notificationMessage,
+              type: 'detection',
+              priority: confidence >= 80 ? 'critical' : 'high',
+              relatedDetectionId: newDetection._id
+            });
+            
+            // Create notifications for admins
+            const admins = await User.find({ role: 'admin' });
+            for (const admin of admins) {
+              await Notification.create({
+                recipientId: admin._id,
+                senderId: req.user.id,
+                title: notificationTitle,
+                message: notificationMessage,
+                type: 'detection',
+                priority: confidence >= 80 ? 'critical' : 'high',
+                relatedDetectionId: newDetection._id
+              });
+            }
+            
+            // Send email notification
             await notifyAnimalDetection(req.user, detection.name, detection.confidence);
           } catch (emailError) {
             console.error('Failed to send YOLO detection notification:', emailError);
