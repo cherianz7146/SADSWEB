@@ -1,0 +1,54 @@
+==============================================
+COPY THESE CORRECT VALUES TO YOUR backend/.env FILE
+==============================================
+
+Find these lines in backend/.env and update them:
+
+WRONG (Current):
+TWILIO_PHONE_NUMBER=+917306901750
+TWILIO_WHATSAPP_NUMBER=+917306901750
+
+CORRECT (Should be):
+TWILIO_PHONE_NUMBER=+19789244322
+TWILIO_WHATSAPP_NUMBER=+14155238886
+
+==============================================
+EXPLANATION:
+==============================================
+
++917306901750 = Your personal phone (VERIFIED CALLER ID)
+                This is the number that RECEIVES messages
+                This is NOT a Twilio number
+
++19789244322  = Your Twilio SMS/Voice number
+                This is what sends SMS and makes calls
+
++14155238886  = Twilio WhatsApp Sandbox
+                This is what sends WhatsApp messages
+
+==============================================
+HOW TO FIX:
+==============================================
+
+1. Open file: D:\SADS2\backend\.env
+
+2. Find line 16:
+   TWILIO_PHONE_NUMBER=+917306901750
+
+3. Change to:
+   TWILIO_PHONE_NUMBER=+19789244322
+
+4. Find line 17:
+   TWILIO_WHATSAPP_NUMBER=+917306901750
+
+5. Change to:
+   TWILIO_WHATSAPP_NUMBER=+14155238886
+
+6. Save the file
+
+7. Restart backend:
+   Stop current server (Ctrl+C)
+   Run: npm start
+
+==============================================
+

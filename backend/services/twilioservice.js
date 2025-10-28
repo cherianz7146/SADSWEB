@@ -17,6 +17,22 @@ if (accountSid && authToken) {
 }
 
 /**
+ * Format phone number to E.164 format
+ * @param {string} phone - Phone number
+ * @returns {string} Formatted phone number with + prefix
+ */
+function formatPhoneNumber(phone) {
+  if (!phone) return phone;
+  // Remove all spaces, dashes, and parentheses
+  let cleaned = phone.replace(/[\s\-\(\)]/g, '');
+  // Add + if missing
+  if (!cleaned.startsWith('+')) {
+    cleaned = '+' + cleaned;
+  }
+  return cleaned;
+}
+
+/**
  * Send SMS Alert
  * @param {string} to - Phone number (E.164 format: +1234567890)
  * @param {string} message - Message content
@@ -28,11 +44,14 @@ async function sendSMS(to, message) {
     return { success: false, error: 'Twilio not configured' };
   }
 
+  // Format phone number to E.164
+  const formattedPhone = formatPhoneNumber(to);
+
   try {
     const result = await client.messages.create({
       body: message,
       from: twilioPhoneNumber,
-      to: to
+      to: formattedPhone
     });
 
     console.log(`✅ SMS sent to ${to}:`, result.sid);
@@ -55,11 +74,14 @@ async function sendWhatsApp(to, message) {
     return { success: false, error: 'Twilio not configured' };
   }
 
+  // Format phone number to E.164
+  const formattedPhone = formatPhoneNumber(to);
+
   try {
     const result = await client.messages.create({
       body: message,
       from: `whatsapp:${twilioWhatsAppNumber}`,
-      to: `whatsapp:${to}`
+      to: `whatsapp:${formattedPhone}`
     });
 
     console.log(`✅ WhatsApp sent to ${to}:`, result.sid);
@@ -82,6 +104,9 @@ async function makeCall(to, message) {
     return { success: false, error: 'Twilio not configured' };
   }
 
+  // Format phone number to E.164
+  const formattedPhone = formatPhoneNumber(to);
+
   try {
     // Create TwiML for text-to-speech
     const twiml = `
@@ -95,7 +120,7 @@ async function makeCall(to, message) {
     const result = await client.calls.create({
       twiml: twiml,
       from: twilioPhoneNumber,
-      to: to
+      to: formattedPhone
     });
 
     console.log(`✅ Call initiated to ${to}:`, result.sid);
@@ -260,6 +285,7 @@ module.exports = {
   sendSmartAlert,
   sendTestAlert
 };
+
 
 
 

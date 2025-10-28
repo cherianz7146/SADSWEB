@@ -432,3 +432,4 @@ By clicking "I agree to the Terms of Service and Privacy Policy" during registra
 *© 2025 SADS - Smart Animal Deterrent System. All rights reserved.*
 
 
+

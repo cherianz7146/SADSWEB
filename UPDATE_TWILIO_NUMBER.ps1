@@ -38,3 +38,4 @@ Write-Host "2. Look for: ✅ Twilio client initialized" -ForegroundColor White
 Write-Host "3. Test registration with your phone number!" -ForegroundColor White
 
 
+

@@ -1,13 +1,14 @@
 const nodemailer = require('nodemailer');
+const config = require('../config/constants');
 
 // Create transporter with better Gmail configuration
 const transport = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT || 587),
+  host: config.smtpHost,
+  port: config.smtpPort,
   secure: false, // true for 465, false for other ports
-  auth: process.env.SMTP_USER && process.env.SMTP_PASS ? {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+  auth: config.smtpUser && config.smtpPass ? {
+    user: config.smtpUser,
+    pass: config.smtpPass,
   } : undefined,
   tls: {
     rejectUnauthorized: false // Only for development - set to true in production
@@ -26,7 +27,7 @@ transport.verify((error, success) => {
 
 async function sendEmail({ to, subject, html }) {
   // Check if SMTP is configured
-  if (!process.env.SMTP_HOST || !process.env.SMTP_PORT || !process.env.SMTP_USER || !process.env.SMTP_PASS) {
+  if (!config.smtpHost || !config.smtpPort || !config.smtpUser || !config.smtpPass) {
     console.warn('SMTP not fully configured. Email not sent:', { to, subject });
     console.warn('Required: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS');
     return;
@@ -39,7 +40,7 @@ async function sendEmail({ to, subject, html }) {
   
   try {
     const info = await transport.sendMail({
-      from: process.env.MAIL_FROM || process.env.SMTP_USER,
+      from: config.mailFrom || config.smtpUser,
       to,
       subject,
       html,

@@ -18,7 +18,7 @@ const UserSidebar: React.FC = () => {
   const allMenuItems = [
     { name: 'Home', href: '/dashboard', icon: HomeIcon, permission: null }, // Always visible
     { name: 'Camera Detection', href: '/dashboard/camera', icon: CameraIcon, permission: 'canViewCameras' as const },
-    { name: 'Detection Report', href: '/dashboard/detection-report', icon: ChartBarIcon, permission: 'canViewReports' as const },
+    { name: 'Detection Report', href: '/dashboard/detection-report', icon: ChartBarIcon, permission: null }, // Always visible for all managers
     { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon, permission: null }, // Always visible
     { name: 'Alert Settings', href: '/dashboard/alert-settings', icon: DevicePhoneMobileIcon, permission: null }, // Always visible
   ];

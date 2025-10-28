@@ -198,11 +198,85 @@ const Dashboard: React.FC = () => {
 					</motion.div>
 				</div>
 
-				{/* Quick Actions */}
+				{/* Detection Reports Table */}
 				<motion.div
 					initial={{ opacity: 0, y: 20 }}
 					animate={{ opacity: 1, y: 0 }}
 					transition={{ duration: 0.6, delay: 0.6 }}
+					className="mt-8 bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
+				>
+					<div className="flex items-center justify-between mb-6">
+						<h2 className="text-xl font-semibold text-gray-900">Detection Reports</h2>
+						<button 
+							onClick={() => navigate('/dashboard/reports')}
+							className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+						>
+							View All →
+						</button>
+					</div>
+					
+					<div className="overflow-x-auto">
+						<table className="min-w-full divide-y divide-gray-200">
+							<thead className="bg-gray-50">
+								<tr>
+									<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+									<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Animal</th>
+									<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Confidence</th>
+									<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+									<th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+								</tr>
+							</thead>
+							<tbody className="bg-white divide-y divide-gray-200">
+								{log.slice(0, 5).map((detection, index) => (
+									<tr key={index} className="hover:bg-gray-50">
+										<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+											{new Date(detection.at).toLocaleTimeString()}
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 capitalize">
+											{detection.label}
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap">
+											<span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+												detection.probability >= 0.8 ? 'bg-green-100 text-green-800' :
+												detection.probability >= 0.6 ? 'bg-yellow-100 text-yellow-800' :
+												'bg-red-100 text-red-800'
+											}`}>
+												{(detection.probability * 100).toFixed(1)}%
+											</span>
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 capitalize">
+											{detection.source}
+										</td>
+										<td className="px-6 py-4 whitespace-nowrap text-sm">
+											{isTarget(detection.label) && detection.probability >= 0.6 ? (
+												<span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+													Deterrent Activated
+												</span>
+											) : (
+												<span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+													Monitoring
+												</span>
+											)}
+										</td>
+									</tr>
+								))}
+								{log.length === 0 && (
+									<tr>
+										<td colSpan={5} className="px-6 py-8 text-center text-sm text-gray-500">
+											No detections yet. Enable detection to start monitoring.
+										</td>
+									</tr>
+								)}
+							</tbody>
+						</table>
+					</div>
+				</motion.div>
+
+				{/* Quick Actions */}
+				<motion.div
+					initial={{ opacity: 0, y: 20 }}
+					animate={{ opacity: 1, y: 0 }}
+					transition={{ duration: 0.6, delay: 0.8 }}
 					className="mt-8 bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
 				>
 					<h2 className="text-xl font-semibold text-gray-900 mb-6">Quick Actions</h2>
