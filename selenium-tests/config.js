@@ -1,7 +1,7 @@
 module.exports = {
   // Application URLs
   frontendUrl: process.env.FRONTEND_URL || 'http://localhost:5173',
-  backendUrl: process.env.BACKEND_URL || 'http://localhost:5002',
+  backendUrl: process.env.BACKEND_URL || 'http://13.53.242.190:5000',
   
   // Default test user credentials
   testUser: {
