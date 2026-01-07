@@ -1,0 +1,28 @@
+@startuml StateDeviceStatus
+[*] --> Offline: Device Registered
+
+Offline --> Online: Heartbeat Received
+Online --> Offline: No Heartbeat (Timeout)
+Online --> Maintenance: Admin Sets Maintenance
+Maintenance --> Online: Maintenance Complete
+Maintenance --> Offline: Device Disabled
+
+state Online {
+  [*] --> Normal
+  Normal --> LowBattery: Battery < 20%
+  Normal --> LowSignal: Signal < 30%
+  LowBattery --> Normal: Battery Charged
+  LowSignal --> Normal: Signal Restored
+  LowBattery --> Critical: Battery < 10%
+  LowSignal --> Critical: Signal < 10%
+  Critical --> Maintenance: Requires Attention
+}
+
+Offline --> [*]: Device Deleted
+
+@enduml
+
+
+
+
+

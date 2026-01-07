@@ -1,22 +1,40 @@
 import React from 'react';
+import { motion } from 'framer-motion';
+import Header from '../components/Header';
 import Footer from '../components/Footer';
 
 const FeaturesPage: React.FC = () => {
 	return (
-		<div className="min-h-screen bg-gray-50 flex flex-col">
-			{/* Hero banner */}
-			<section className="relative h-[360px] w-full">
-				<img
-					src="https://images.pexels.com/photos/1125776/pexels-photo-1125776.jpeg?auto=compress&cs=tinysrgb&w=1920&h=720&fit=crop"
-					alt="SADS Features"
+		<div className="min-h-screen flex flex-col">
+			<Header />
+			
+			{/* Hero banner - Same background as Landing Page */}
+			<section className="relative min-h-[500px] w-full flex items-center justify-center pt-16">
+				{/* Background Image - Same as Landing Page */}
+				<div className="absolute inset-0 w-full h-full">
+					<img
+						src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=80"
+						alt="Agricultural landscape"
 					className="absolute inset-0 w-full h-full object-cover"
 				/>
-				<div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/40 to-black/40" />
-				<div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-end pb-10">
-					<div>
-						<h1 className="text-4xl sm:text-5xl font-extrabold text-white">Powerful Features for <span className="text-emerald-400">Complete Protection</span></h1>
-						<p className="text-white/90 mt-3 max-w-3xl">Our advanced SADS technology combines lightweight AI with robust deterrent simulation to provide comprehensive, humane animal deterrence.</p>
+					{/* Dark Overlay - Same as Landing Page */}
+					<div className="absolute inset-0 bg-black/60" />
 					</div>
+				
+				<div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+					<motion.div
+						initial={{ opacity: 0, y: 30 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ duration: 0.8 }}
+					>
+						<h1 className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-white mb-6">
+							Powerful Features for{' '}
+							<span className="text-emerald-400">Complete Protection</span>
+						</h1>
+						<p className="text-white/90 text-lg sm:text-xl max-w-3xl mx-auto">
+							Our advanced SADS technology combines lightweight AI with robust deterrent simulation to provide comprehensive, humane animal deterrence.
+						</p>
+					</motion.div>
 				</div>
 			</section>
 

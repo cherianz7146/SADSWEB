@@ -37,7 +37,7 @@ const ManagerDashboard: React.FC = () => {
     };
 
     fetchStats();
-  }, []);
+  }, [user]);
 
   const cards = [
     { label: 'My Property', value: stats.properties.total.toString(), icon: MapPinIcon, color: 'text-blue-600 bg-blue-100' },
@@ -62,13 +62,32 @@ const ManagerDashboard: React.FC = () => {
 
   return (
     <div className="p-8">
-      {/* Welcome Section */}
+      {/* Welcome Section with Profile */}
       <div className="mb-8">
         <div className="bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl p-8 text-white">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name}!</h1>
-              <p className="text-blue-100 text-lg">Monitor your property and wildlife detections</p>
+            <div className="flex items-center gap-6">
+              {/* Profile Avatar */}
+              <div className="flex-shrink-0">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-16 h-16 rounded-full border-2 border-white/30 object-cover"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border-2 border-white/30">
+                    <UserIcon className="h-8 w-8 text-white" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name}!</h1>
+                <p className="text-blue-100 text-lg">Monitor your property and wildlife detections</p>
+                {user?.userId && (
+                  <p className="text-blue-200 text-sm mt-1">User ID: {user.userId}</p>
+                )}
+              </div>
             </div>
             <div className="hidden md:block">
               <div className="bg-white/20 backdrop-blur-sm rounded-xl p-4">

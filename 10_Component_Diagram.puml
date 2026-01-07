@@ -1,0 +1,89 @@
+@startuml ComponentDiagram
+package "Frontend Layer" {
+  component [React Frontend] as Frontend {
+    component [Pages] as Pages
+    component [Components] as Components
+    component [Contexts] as Contexts
+    component [Utils] as Utils
+  }
+}
+
+package "Backend Layer" {
+  component [Express API] as API {
+    component [Routes] as Routes
+    component [Controllers] as Controllers
+    component [Middleware] as Middleware
+  }
+  
+  component [Business Logic] as Business {
+    component [Device Health Service] as DeviceHealthService
+    component [Manager Profile Service] as ProfileService
+    component [Field Management Service] as FieldService
+    component [Detection Service] as DetectionService
+    component [Notification Service] as NotificationService
+  }
+  
+  component [Data Access Layer] as DAL {
+    component [User Model] as UserModel
+    component [Device Model] as DeviceModel
+    component [Device Health Model] as HealthModel
+    component [Field Model] as FieldModel
+    component [Property Model] as PropertyModel
+    component [Detection Model] as DetectionModel
+    component [Manager Profile Model] as ProfileModel
+  }
+}
+
+package "External Services" {
+  component [MongoDB] as MongoDB
+  component [ML Service (YOLO)] as MLService
+  component [Twilio SMS] as Twilio
+  component [Email Service] as EmailService
+}
+
+package "IoT Layer" {
+  component [IoT Devices] as Devices {
+    component [Cameras] as Cameras
+    component [Sensors] as Sensors
+    component [Deterrents] as Deterrents
+  }
+}
+
+Frontend --> API : HTTP/REST
+Pages --> Components
+Components --> Contexts
+Contexts --> Utils
+
+API --> Business
+Routes --> Controllers
+Controllers --> Middleware
+Controllers --> Business
+
+Business --> DAL
+DeviceHealthService --> HealthModel
+ProfileService --> ProfileModel
+FieldService --> FieldModel
+DetectionService --> DetectionModel
+NotificationService --> EmailService
+NotificationService --> Twilio
+
+DAL --> MongoDB
+UserModel --> MongoDB
+DeviceModel --> MongoDB
+HealthModel --> MongoDB
+FieldModel --> MongoDB
+PropertyModel --> MongoDB
+DetectionModel --> MongoDB
+ProfileModel --> MongoDB
+
+Business --> MLService : API Calls
+Devices --> API : Heartbeat
+Cameras --> MLService : Image/Video
+MLService --> Business : Detection Results
+
+@enduml
+
+
+
+
+

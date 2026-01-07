@@ -1,0 +1,36 @@
+@startuml ActivityDetectionFlow
+start
+:Camera captures image/video;
+:Send to ML Service (YOLO);
+:ML Service processes image;
+:Animal detected?;
+if (Detection?) then (yes)
+  :Calculate confidence score;
+  :Save detection to database;
+  :Check if target animal;
+  if (Target animal?) then (yes)
+    :Check confidence >= threshold;
+    if (High confidence?) then (yes)
+      :Activate deterrent system;
+      :Send critical alert (SMS + WhatsApp + Call);
+    else (no)
+      :Send warning alert (SMS + WhatsApp);
+    endif
+  else (no)
+    :Log detection only;
+    :Send info alert (SMS);
+  endif
+  :Update manager profile stats;
+  :Update field statistics;
+  :Update device health metrics;
+else (no)
+  :Continue monitoring;
+endif
+stop
+
+@enduml
+
+
+
+
+

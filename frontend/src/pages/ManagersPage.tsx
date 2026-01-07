@@ -8,7 +8,8 @@ import {
   XMarkIcon,
   CameraIcon,
   ChartBarIcon,
-  Cog6ToothIcon
+  Cog6ToothIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
 import { apiFetch } from '../utils/api';
 import BackButton from '../components/BackButton';
@@ -42,6 +43,7 @@ interface Manager {
 const ManagersPage: React.FC = () => {
   const [managers, setManagers] = useState<Manager[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingManager, setEditingManager] = useState<Manager | null>(null);
   const [formData, setFormData] = useState({
@@ -180,6 +182,30 @@ const ManagersPage: React.FC = () => {
     }
   };
 
+  const syncAllManagersToProfiles = async () => {
+    if (!window.confirm('This will create manager profiles for all managers who don\'t have one. Continue?')) {
+      return;
+    }
+    
+    try {
+      setSyncing(true);
+      const response = await apiFetch('/api/manager-profiles/sync-all', {
+        method: 'POST'
+      });
+      
+      if (response.data?.success) {
+        alert(`✅ ${response.data.message}\n\nSummary:\n- Created: ${response.data.summary.created}\n- Updated: ${response.data.summary.updated}\n- Skipped: ${response.data.summary.skipped}`);
+      } else {
+        alert('Sync completed with some issues. Check console for details.');
+      }
+    } catch (error: any) {
+      console.error('Failed to sync managers:', error);
+      alert(`Failed to sync managers: ${error.message || 'Unknown error'}`);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const getRoleColor = (role: string) => {
     switch (role) {
       case 'manager': return 'bg-blue-100 text-blue-800';
@@ -199,13 +225,23 @@ const ManagersPage: React.FC = () => {
           <h1 className="text-2xl font-semibold text-gray-900">Managers</h1>
           <p className="text-sm text-gray-500">Manage manager accounts and permissions</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center space-x-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
-        >
-          <PlusIcon className="h-5 w-5" />
-          <span>Add Manager</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={syncAllManagersToProfiles}
+            disabled={syncing}
+            className="inline-flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ArrowPathIcon className={`h-5 w-5 ${syncing ? 'animate-spin' : ''}`} />
+            <span>{syncing ? 'Syncing...' : 'Sync to Profiles'}</span>
+          </button>
+          <button
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center space-x-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors"
+          >
+            <PlusIcon className="h-5 w-5" />
+            <span>Add Manager</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

@@ -7,11 +7,13 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const { authRequired } = require('../middleware/auth');
+const deviceAuth = require('../middleware/deviceAuth');
 const {
   checkYoloHealth,
   verifyWithYolo,
   detectFromFile,
-  getYoloStats
+  getYoloStats,
+  detectFromDevice
 } = require('../controllers/yolocontroller');
 
 // Configure multer for file uploads
@@ -40,6 +42,10 @@ router.post('/detect-file', authRequired, upload.single('image'), detectFromFile
 
 // Get YOLO API statistics
 router.get('/stats', authRequired, getYoloStats);
+
+// Device detection endpoint (for ESP32 cameras)
+// Uses device authentication via serial number
+router.post('/device-detect', deviceAuth, detectFromDevice);
 
 module.exports = router;
 

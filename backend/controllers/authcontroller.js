@@ -1,10 +1,20 @@
 const { OAuth2Client } = require('google-auth-library');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
 const { googleClientId, jwtSecret } = require('../config/constants');
 const User = require('../models/user');
 
 const googleClient = new OAuth2Client(googleClientId);
+
+// Helper function to check MongoDB connection
+function checkMongoConnection() {
+  const state = mongoose.connection.readyState;
+  // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+  if (state !== 1) {
+    throw new Error(`Database not connected. Connection state: ${state === 0 ? 'disconnected' : state === 2 ? 'connecting' : 'disconnecting'}`);
+  }
+}
 
 function generateJwt(payload) {
   return jwt.sign(payload, jwtSecret, { expiresIn: '1h' });
@@ -222,14 +232,89 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
+    // Check MongoDB connection state
+    const connectionState = mongoose.connection.readyState;
+    // 0 = disconnected, 1 = connected, 2 = connecting, 3 = disconnecting
+    
+    if (connectionState === 0) {
+      // Truly disconnected - wait a bit and try to reconnect
+      console.warn('⚠️  MongoDB disconnected during login, attempting to reconnect...');
+      try {
+        const { mongoUri } = require('../config/constants');
+        await mongoose.connect(mongoUri, {
+          serverSelectionTimeoutMS: 10000,
+          socketTimeoutMS: 45000,
+          connectTimeoutMS: 10000
+        });
+        console.log('✅ MongoDB reconnected');
+      } catch (reconnectError) {
+        console.error('❌ Failed to reconnect:', reconnectError.message);
+        return res.status(503).json({ 
+          message: 'Database connection unavailable',
+          error: 'Unable to connect to database. Please check your internet connection and try again.',
+          details: 'Database is disconnected and reconnection failed'
+        });
+      }
+    }
+    
+    // If connecting (state 2), wait a moment for connection to establish
+    if (connectionState === 2) {
+      console.log('⏳ MongoDB is connecting, waiting...');
+      let attempts = 0;
+      while (mongoose.connection.readyState !== 1 && attempts < 10) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        attempts++;
+      }
+      if (mongoose.connection.readyState !== 1) {
+        return res.status(503).json({ 
+          message: 'Database connection unavailable',
+          error: 'Database connection is taking longer than expected. Please try again in a moment.',
+          details: 'Connection timeout'
+        });
+      }
+    }
+    
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ message: 'email and password required' });
+    
     const user = await User.findOne({ email });
     if (!user || !user.password) return res.status(401).json({ message: 'Invalid credentials' });
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
     user.lastLogin = new Date();
     await user.save();
+    
+    // Auto-create manager profile if user is a manager and profile doesn't exist
+    if (user.role === 'manager') {
+      try {
+        const ManagerProfile = require('../models/managerProfile');
+        const existingProfile = await ManagerProfile.findOne({ Manager_Id: user._id });
+        if (!existingProfile) {
+          const { calculateManagerStats } = require('../controllers/managerProfileController');
+          const stats = await calculateManagerStats(user._id.toString());
+          const newProfile = await ManagerProfile.create({
+            Manager_Id: user._id,
+            accountCreatedAt: user.createdAt,
+            lastLoginAt: user.lastLogin,
+            totalLoginCount: 1,
+            ...stats
+          });
+          newProfile.calculatePerformanceScore();
+          await newProfile.save();
+          console.log(`✅ Auto-created manager profile for ${user.name} (${user.email})`);
+        } else {
+          // Update last login info
+          existingProfile.lastLoginAt = user.lastLogin;
+          existingProfile.totalLoginCount = (existingProfile.totalLoginCount || 0) + 1;
+          existingProfile.lastActiveDate = new Date();
+          await existingProfile.save();
+        }
+      } catch (profileError) {
+        // Don't fail login if profile creation fails
+        console.warn('Failed to create/update manager profile:', profileError.message);
+      }
+    }
+    
     const token = generateJwt({ userId: user._id, email: user.email, role: user.role });
     return res.json({ 
       token, 
@@ -246,6 +331,16 @@ exports.login = async (req, res) => {
     });
   } catch (e) {
     console.error('Login error:', e);
+    
+    // Check if it's a MongoDB connection error
+    if (e.name === 'MongooseError' || e.name === 'MongoServerError' || e.message.includes('buffering') || e.message.includes('timeout') || e.message.includes('connection')) {
+      return res.status(503).json({ 
+        message: 'Database connection unavailable',
+        error: 'Unable to connect to database. Please check your internet connection and try again.',
+        details: e.message
+      });
+    }
+    
     return res.status(500).json({ message: 'Login failed', error: e.message });
   }
 };

@@ -1,21 +1,42 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { ArrowLeftIcon } from '@heroicons/react/24/outline';
+import Header from '../components/Header';
 import Footer from '../components/Footer';
 
 const TermsOfServicePage: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      
+      {/* Background - Same as Landing Page */}
+      <div className="relative flex-1">
+        <div className="absolute inset-0 w-full h-full">
+          <img
+            src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=80"
+            alt="Agricultural landscape"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/60" />
+        </div>
+        
+        <div className="relative z-10 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
         <Link
           to="/"
-          className="inline-flex items-center text-emerald-600 hover:text-emerald-700 mb-6 transition-colors"
+                className="inline-flex items-center text-white hover:text-gray-200 mb-6 transition-colors"
         >
           <ArrowLeftIcon className="h-5 w-5 mr-2" />
           Back to Home
         </Link>
 
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+              <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden">
           <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-6">
             <h1 className="text-3xl font-bold text-white">Terms of Service</h1>
             <p className="text-emerald-50 mt-2">Effective Date: October 26, 2025 | Last Updated: October 26, 2025</p>
@@ -223,10 +244,13 @@ const TermsOfServicePage: React.FC = () => {
         <div className="mt-8 text-center">
           <Link
             to="/privacy-policy"
-            className="text-emerald-600 hover:text-emerald-700 font-semibold underline"
+                  className="text-white hover:text-emerald-300 font-semibold underline"
           >
             View Privacy Policy →
           </Link>
+              </div>
+            </motion.div>
+          </div>
         </div>
       </div>
       

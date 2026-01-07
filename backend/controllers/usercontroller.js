@@ -65,6 +65,18 @@ async function createUser(req, res) {
     console.log('User created successfully by admin:', { id: user._id, name: user.name, email: user.email, role: user.role, plantation: user.plantation });
     const { password: _, ...safe } = user.toObject();
     
+    // Log activity (non-blocking)
+    if (req.user && req.user.role === 'admin') {
+      const { logActivity, getIpAddress } = require('../utils/activityLogger');
+      logActivity(
+        req.user._id,
+        'user_created',
+        `Created ${role || 'manager'} user: ${user.name} (${user.email})`,
+        { userId: user._id.toString(), userName: user.name, userEmail: user.email, userRole: user.role },
+        getIpAddress(req)
+      ).catch(err => console.error('Failed to log user creation activity:', err));
+    }
+    
     // Send welcome email
     console.log('Attempting to send welcome email for admin-created user:', { name: user.name, email: user.email, role: user.role });
     const { sendWelcomeEmail } = require('../services/emailservices');
@@ -118,13 +130,17 @@ module.exports = { listUsers, createUser, seedUsers };
 // Manager self-update (email/password)
 module.exports.updateSelf = async function updateSelf(req, res) {
   try {
-    const userId = req.user._id;
-    const { email, password } = req.body;
+    const userId = req.user.id;
+    const { email, password, name, phone, avatar } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ message: 'User not authenticated' });
+    }
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    if (email) {
+    if (email !== undefined) {
       const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
       if (!emailRegex.test(email)) {
         return res.status(400).json({ message: 'Invalid email format' });
@@ -133,6 +149,31 @@ module.exports.updateSelf = async function updateSelf(req, res) {
       const exists = await User.findOne({ email, _id: { $ne: userId } });
       if (exists) return res.status(409).json({ message: 'Email already in use' });
       user.email = email;
+    }
+
+    if (name !== undefined) {
+      if (name.trim().length < 2) {
+        return res.status(400).json({ message: 'Name must be at least 2 characters' });
+      }
+      user.name = name.trim();
+    }
+
+    if (phone !== undefined) {
+      // Allow null/empty or validate Indian phone format
+      if (phone && phone.trim() !== '') {
+        const phoneRegex = /^\+91\d{10}$/; // +91 followed by 10 digits, no space (13 characters total)
+        if (!phoneRegex.test(phone.trim())) {
+          return res.status(400).json({ message: 'Phone number must be in format +91XXXXXXXXXX (13 characters: +91 + 10 digits)' });
+        }
+        user.phone = phone.trim();
+      } else {
+        user.phone = null;
+      }
+    }
+
+    if (avatar !== undefined) {
+      // Allow null to delete avatar, or base64 string to set avatar
+      user.avatar = avatar || null;
     }
 
     if (password) {
@@ -219,6 +260,33 @@ async function updateUser(req, res) {
     
     // Save updated user
     await user.save();
+    
+    // Log activity (non-blocking)
+    if (req.user && req.user.role === 'admin') {
+      const { logActivity, getIpAddress } = require('../utils/activityLogger');
+      const changes = [];
+      if (name !== undefined && name !== originalUser.name) changes.push('name');
+      if (email !== undefined && email !== originalEmail) changes.push('email');
+      if (password) changes.push('password');
+      if (role !== undefined && role !== originalRole) changes.push('role');
+      if (isActive !== undefined && isActive !== originalIsActive) changes.push('status');
+      if (permissions !== undefined) changes.push('permissions');
+      
+      if (changes.length > 0) {
+        logActivity(
+          req.user._id,
+          'user_updated',
+          `Updated user: ${user.name} (${user.email}) - Changed: ${changes.join(', ')}`,
+          { 
+            targetUserId: user._id.toString(), 
+            targetUserName: user.name, 
+            targetUserEmail: user.email,
+            changes: changes
+          },
+          getIpAddress(req)
+        ).catch(err => console.error('Failed to log user update activity:', err));
+      }
+    }
     
     // Notify manager if their credentials were updated
     if ((originalRole === 'manager' || user.role === 'manager') && (password || email !== originalEmail)) {
@@ -310,6 +378,23 @@ async function deleteUser(req, res) {
     // Delete the user
     await User.findByIdAndDelete(id);
     
+    // Log activity (non-blocking)
+    if (req.user && req.user.role === 'admin') {
+      const { logActivity, getIpAddress } = require('../utils/activityLogger');
+      logActivity(
+        req.user._id,
+        'user_deleted',
+        `Deleted user: ${user.name} (${user.email})`,
+        { 
+          deletedUserId: user._id.toString(), 
+          deletedUserName: user.name, 
+          deletedUserEmail: user.email,
+          deletedUserRole: user.role
+        },
+        getIpAddress(req)
+      ).catch(err => console.error('Failed to log user deletion activity:', err));
+    }
+    
     // Notify admins about user deletion
     const admins = await User.find({ role: 'admin' }).select('email');
     if (admins.length > 0) {
@@ -341,6 +426,162 @@ async function deleteUser(req, res) {
   }
 }
 
+// GET /api/users/me/additional-info - Get additional information for admin
+async function getAdminAdditionalInfo(req, res) {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Calculate account age in days
+    const accountAge = user.createdAt 
+      ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+
+    // Get timezone from user preferences or use browser default
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    // Determine authentication method
+    const authMethod = user.googleId ? 'Google OAuth' : 'Email/Password';
+
+    // Get last profile update (from updatedAt)
+    const lastProfileUpdate = user.updatedAt || user.createdAt;
+
+    res.json({
+      accountAge,
+      accountAgeFormatted: accountAge === 0 ? 'Today' : `${accountAge} day${accountAge !== 1 ? 's' : ''}`,
+      timezone,
+      authMethod,
+      lastProfileUpdate,
+      hasGoogleAuth: !!user.googleId,
+      hasPassword: !!user.password
+    });
+  } catch (err) {
+    console.error('Error getting admin additional info:', err);
+    res.status(500).json({ message: 'Failed to get additional info', error: err.message });
+  }
+}
+
+// GET /api/users/me/activity - Get activity history for admin
+async function getAdminActivity(req, res) {
+  try {
+    const userId = req.user._id;
+    const ActivityLog = require('../models/activityLog');
+    const Property = require('../models/property');
+    const ManagerProfile = require('../models/managerProfile');
+
+    // Fetch activities from ActivityLog
+    const activityLogs = await ActivityLog.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean();
+
+    // Fetch recent users created by this admin
+    const recentUsers = await User.find({ 
+      'plantation.assignedBy': userId 
+    })
+      .select('name email role createdAt')
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .lean();
+
+    // Fetch recent properties (check if manager was assigned by this admin)
+    const recentProperties = await Property.find({
+      'plantation.assignedBy': userId
+    })
+      .select('name address status createdAt updatedAt')
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .lean();
+
+    // Fetch recent manager profiles (all profiles, as admin manages them)
+    const recentProfiles = await ManagerProfile.find({})
+      .select('Manager_Id createdAt updatedAt')
+      .populate('Manager_Id', 'name email')
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .lean();
+
+    // Combine and format activities
+    const activities = [];
+
+    // Add activity logs
+    activityLogs.forEach(log => {
+      activities.push({
+        id: log._id.toString(),
+        type: 'activity_log',
+        action: log.action,
+        description: log.description,
+        metadata: log.metadata,
+        timestamp: log.createdAt,
+        source: 'activity_log'
+      });
+    });
+
+    // Add user creation activities
+    recentUsers.forEach(user => {
+      activities.push({
+        id: `user_${user._id.toString()}`,
+        type: 'user_created',
+        action: 'user_created',
+        description: `Created user: ${user.name} (${user.email})`,
+        metadata: { userId: user._id.toString(), userName: user.name, userEmail: user.email, userRole: user.role },
+        timestamp: user.createdAt,
+        source: 'user'
+      });
+    });
+
+    // Add property activities
+    recentProperties.forEach(property => {
+      const isUpdate = property.updatedAt && property.createdAt && 
+        property.updatedAt.getTime() !== property.createdAt.getTime();
+      activities.push({
+        id: `property_${property._id.toString()}`,
+        type: isUpdate ? 'property_updated' : 'property_created',
+        action: isUpdate ? 'property_updated' : 'property_created',
+        description: `${isUpdate ? 'Updated' : 'Created'} property: ${property.name}`,
+        metadata: { propertyId: property._id.toString(), propertyName: property.name, propertyStatus: property.status },
+        timestamp: isUpdate ? property.updatedAt : property.createdAt,
+        source: 'property'
+      });
+    });
+
+    // Add manager profile activities
+    recentProfiles.forEach(profile => {
+      const isUpdate = profile.updatedAt && profile.createdAt && 
+        profile.updatedAt.getTime() !== profile.createdAt.getTime();
+      const managerName = profile.Manager_Id?.name || 'Unknown';
+      activities.push({
+        id: `profile_${profile._id.toString()}`,
+        type: isUpdate ? 'manager_profile_updated' : 'manager_profile_created',
+        action: isUpdate ? 'manager_profile_updated' : 'manager_profile_created',
+        description: `${isUpdate ? 'Updated' : 'Created'} manager profile: ${managerName}`,
+        metadata: { 
+          profileId: profile._id.toString(), 
+          managerId: profile.Manager_Id?._id?.toString(),
+          managerName: managerName
+        },
+        timestamp: isUpdate ? profile.updatedAt : profile.createdAt,
+        source: 'manager_profile'
+      });
+    });
+
+    // Sort all activities by timestamp (newest first)
+    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    // Limit to 50 most recent
+    const limitedActivities = activities.slice(0, 50);
+
+    res.json(limitedActivities);
+  } catch (err) {
+    console.error('Error getting admin activity:', err);
+    res.status(500).json({ message: 'Failed to get activity', error: err.message });
+  }
+}
+
 // Export the new functions
 module.exports.updateUser = updateUser;
 module.exports.deleteUser = deleteUser;
+module.exports.getAdminAdditionalInfo = getAdminAdditionalInfo;
+module.exports.getAdminActivity = getAdminActivity;

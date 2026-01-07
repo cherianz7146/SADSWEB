@@ -1,0 +1,67 @@
+@startuml ObjectDiagram
+object manager1 {
+  _id = "507f1f77bcf86cd799439011"
+  name = "John Doe"
+  email = "john@example.com"
+  role = "manager"
+  isActive = true
+}
+
+object profile1 {
+  _id = "507f1f77bcf86cd799439012"
+  Manager_Id = "507f1f77bcf86cd799439011"
+  totalDetections = 245
+  totalProperties = 2
+  performanceScore = 87
+  achievements = ["First Detection", "100 Detections"]
+}
+
+object property1 {
+  _id = "507f1f77bcf86cd799439013"
+  name = "North Plantation"
+  managerId = "507f1f77bcf86cd799439011"
+  status = "active"
+}
+
+object field1 {
+  _id = "507f1f77bcf86cd799439014"
+  FieldName = "Field 1"
+  Plantation_Id = "507f1f77bcf86cd799439013"
+  Manager_Id = "507f1f77bcf86cd799439011"
+  status = "active"
+  totalDetections = 120
+}
+
+object device1 {
+  _id = "507f1f77bcf86cd799439015"
+  serialNumber = "DEV-001"
+  type = "camera"
+  status = "online"
+  batteryLevel = 85
+  signalStrength = 92
+  assignedProperty = "507f1f77bcf86cd799439013"
+}
+
+object health1 {
+  _id = "507f1f77bcf86cd799439016"
+  Device_Id = "507f1f77bcf86cd799439015"
+  status = "online"
+  batteryLevel = 85
+  signalStrength = 92
+  healthScore = 89
+  uptime = 98.5
+}
+
+manager1 --> profile1 : has profile
+manager1 --> property1 : manages
+property1 --> field1 : contains
+device1 --> health1 : has health
+device1 --> property1 : assigned to
+field1 --> manager1 : assigned to
+
+@enduml
+
+
+
+
+

@@ -11,7 +11,7 @@ const config = {
     : ['http://localhost:5173'],
   
   // Database
-  mongoUri: process.env.MONGODB_URI || 'mongodb+srv://sads:sads@cluster0.9iyvnte.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0',
+  mongoUri: process.env.MONGODB_URI || 'mongodb+srv://sads:sads@cluster0.9iyvnte.mongodb.net/sads?retryWrites=true&w=majority&appName=Cluster0',
   
   // JWT Authentication
   jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',

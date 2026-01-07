@@ -1,0 +1,35 @@
+@startuml ActivityFieldAssignment
+start
+:Admin selects Property;
+:Admin clicks "Assign Manager";
+:System displays unassigned managers;
+:Admin selects Manager;
+:Admin enters Plantation Info;
+:Admin adds Fields;
+repeat
+  :Enter Field Name;
+  :Add Field to List;
+repeat while (More Fields?) is (yes)
+->no;
+:Admin submits form;
+:Validate Manager exists;
+:Validate Manager is active;
+:Validate Property exists;
+if (Validation successful?) then (yes)
+  :Update Property with Manager;
+  :Update Manager with Plantation Info;
+  :Save Fields to Database;
+  :Send Notification Email to Manager;
+  :Display Success Message;
+else (no)
+  :Display Error Message;
+  stop
+endif
+stop
+
+@enduml
+
+
+
+
+

@@ -1,0 +1,41 @@
+@startuml SequenceDeviceHeartbeat
+actor "IoT Device" as Device
+participant "Device Controller" as Controller
+participant "Device Model" as Model
+participant "Device Health Service" as HealthService
+database "MongoDB" as DB
+
+Device -> Controller: POST /api/devices/heartbeat\n{serialNumber, batteryLevel, signalStrength}
+activate Controller
+
+Controller -> Model: findOne({serialNumber})
+activate Model
+Model -> DB: Query Device
+DB --> Model: Device Data
+Model --> Controller: Device Object
+deactivate Model
+
+Controller -> Model: Update device status
+activate Model
+Model -> DB: Update lastPing, status, batteryLevel, signalStrength
+DB --> Model: Updated Device
+Model --> Controller: Success
+deactivate Model
+
+Controller -> HealthService: Calculate Health Score
+activate HealthService
+HealthService -> HealthService: Calculate: (battery*0.3 + signal*0.3 + uptime*0.4)
+HealthService -> DB: Save Health Record
+DB --> HealthService: Saved
+HealthService --> Controller: Health Score
+deactivate HealthService
+
+Controller --> Device: {message: "Heartbeat received", config}
+deactivate Controller
+
+@enduml
+
+
+
+
+

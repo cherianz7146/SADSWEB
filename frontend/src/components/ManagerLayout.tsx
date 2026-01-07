@@ -4,7 +4,11 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ManagerSidebar from './ManagerSidebar';
 
-const ManagerLayout: React.FC = () => {
+interface ManagerLayoutProps {
+  children?: React.ReactNode;
+}
+
+const ManagerLayout: React.FC<ManagerLayoutProps> = ({ children }) => {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -17,13 +21,15 @@ const ManagerLayout: React.FC = () => {
     <div className="flex h-screen bg-gray-50">
       <ManagerSidebar onLogout={handleLogout} />
       <main className="flex-1 overflow-y-auto">
-        <Outlet />
+        {children || <Outlet />}
       </main>
     </div>
   );
 };
 
 export default ManagerLayout;
+
+
 
 
 

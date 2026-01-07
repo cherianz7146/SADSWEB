@@ -1,23 +1,33 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   HomeIcon, 
   ChartBarIcon, 
   BellIcon,
   ShieldCheckIcon,
   CameraIcon,
-  DevicePhoneMobileIcon
+  DevicePhoneMobileIcon,
+  UserIcon,
+  ArrowRightOnRectangleIcon,
+  HeartIcon
 } from '@heroicons/react/24/outline';
 import { useAuth } from '../contexts/AuthContext';
 
 const UserSidebar: React.FC = () => {
   const location = useLocation();
-  const { user } = useAuth();
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   // Define all menu items with their required permissions
   const allMenuItems = [
     { name: 'Home', href: '/dashboard', icon: HomeIcon, permission: null }, // Always visible
     { name: 'Camera Detection', href: '/dashboard/camera', icon: CameraIcon, permission: 'canViewCameras' as const },
+    { name: 'Device Health', href: '/dashboard/device-health', icon: HeartIcon, permission: null }, // Always visible
     { name: 'Detection Report', href: '/dashboard/detection-report', icon: ChartBarIcon, permission: null }, // Always visible for all managers
     { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon, permission: null }, // Always visible
     { name: 'Alert Settings', href: '/dashboard/alert-settings', icon: DevicePhoneMobileIcon, permission: null }, // Always visible
@@ -36,7 +46,7 @@ const UserSidebar: React.FC = () => {
   });
 
   return (
-    <div className="w-64 bg-gray-900 text-white min-h-screen">
+    <div className="w-64 bg-gray-900 text-white min-h-screen flex flex-col">
       <div className="p-6">
         <div className="flex items-center space-x-2">
           <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-lg">
@@ -46,8 +56,9 @@ const UserSidebar: React.FC = () => {
         </div>
       </div>
       
-      <nav className="mt-8">
-        {menuItems.map((item) => {
+      <nav className="mt-8 flex-1">
+        {/* Home Link */}
+        {menuItems.filter(item => item.name === 'Home').map((item) => {
           const isActive = location.pathname === item.href;
           return (
             <Link
@@ -64,6 +75,49 @@ const UserSidebar: React.FC = () => {
             </Link>
           );
         })}
+        
+        {/* Profile Link - Right after Home */}
+        <Link
+          to="/dashboard/profile"
+          className={`flex items-center px-6 py-3 text-sm font-medium transition-colors ${
+            location.pathname === '/dashboard/profile'
+              ? 'bg-emerald-600 text-white'
+              : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+          }`}
+        >
+          <UserIcon className="h-5 w-5 mr-3" />
+          My Profile
+        </Link>
+        
+        {/* Other Menu Items */}
+        {menuItems.filter(item => item.name !== 'Home').map((item) => {
+          const isActive = location.pathname === item.href;
+          return (
+            <Link
+              key={item.name}
+              to={item.href}
+              className={`flex items-center px-6 py-3 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-emerald-600 text-white'
+                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+              }`}
+            >
+              <item.icon className="h-5 w-5 mr-3" />
+              {item.name}
+            </Link>
+          );
+        })}
+        
+        {/* Logout Button - At the bottom of navigation */}
+        <div className="mt-auto pt-4">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center px-6 py-3 text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white rounded-lg transition-colors"
+          >
+            <ArrowRightOnRectangleIcon className="h-5 w-5 mr-3" />
+            Logout
+          </button>
+        </div>
       </nav>
     </div>
   );

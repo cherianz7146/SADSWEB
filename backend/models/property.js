@@ -60,6 +60,14 @@ const propertySchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  images: [{
+    type: String, // Base64 encoded images or URLs
+    default: []
+  }],
+  profileImage: {
+    type: String, // Base64 encoded profile image or URL
+    default: null
   }
 }, {
   timestamps: true

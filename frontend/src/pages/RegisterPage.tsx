@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
-import { EyeIcon, EyeSlashIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, EyeSlashIcon, ShieldCheckIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 const RegisterPage: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -163,12 +163,26 @@ const RegisterPage: React.FC = () => {
 
   return (
     <div className="min-h-screen relative flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      {/* Background Image - Same as Landing Page */}
+      <div className="absolute inset-0 w-full h-full">
       <img
-        src="https://images.pexels.com/photos/1563215/pexels-photo-1563215.jpeg?auto=compress&cs=tinysrgb&w=1920&h=1080&fit=crop"
-        alt="Wildlife Savannah"
+          src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=80"
+          alt="Agricultural landscape"
         className="absolute inset-0 w-full h-full object-cover"
       />
-      <div className="absolute inset-0 bg-black/50" />
+        {/* Dark Overlay - Same as Landing Page */}
+        <div className="absolute inset-0 bg-black/60" />
+      </div>
+
+      {/* Back Button */}
+      <Link 
+        to="/" 
+        className="absolute top-6 left-6 flex items-center space-x-2 text-white hover:text-gray-200 transition-colors z-10"
+      >
+        <ArrowLeftIcon className="h-5 w-5" />
+        <span className="font-medium text-base">Back</span>
+      </Link>
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

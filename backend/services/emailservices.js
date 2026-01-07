@@ -15,27 +15,44 @@ const transport = nodemailer.createTransport({
   }
 });
 
-// Verify transporter configuration
-transport.verify((error, success) => {
-  if (error) {
-    console.warn('SMTP transporter verification failed:', error.message);
-    console.warn('Emails will not be sent until SMTP is properly configured.');
-  } else {
-    console.log('SMTP transporter is ready to send emails');
-  }
-});
+// Verify transporter configuration (completely optional - disabled by default)
+// Set SMTP_VERIFY=true in .env to enable verification
+const SMTP_VERIFY = process.env.SMTP_VERIFY === 'true';
+const hasValidCredentials = config.smtpUser && config.smtpPass && 
+                            config.smtpUser.trim() !== '' && 
+                            config.smtpPass.trim() !== '';
+
+// Only verify if explicitly enabled via SMTP_VERIFY=true
+if (hasValidCredentials && SMTP_VERIFY) {
+  // Use setImmediate to make verification non-blocking during server startup
+  setImmediate(() => {
+    transport.verify((error, success) => {
+      if (error) {
+        // Only log if verification is explicitly enabled
+        if (error.message.includes('Invalid login') || error.message.includes('WebLoginRequired')) {
+          console.warn('⚠️ SMTP: Invalid credentials. Use App Password for Gmail.');
+        } else {
+          console.warn('⚠️ SMTP verification failed:', error.message);
+        }
+      } else {
+        console.log('✅ SMTP transporter ready');
+      }
+    });
+  });
+}
+// If SMTP_VERIFY is not set to 'true', verification is completely silent
 
 async function sendEmail({ to, subject, html }) {
   // Check if SMTP is configured
   if (!config.smtpHost || !config.smtpPort || !config.smtpUser || !config.smtpPass) {
-    console.warn('SMTP not fully configured. Email not sent:', { to, subject });
-    console.warn('Required: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS');
-    return;
+    console.warn('⚠️ SMTP not fully configured. Email not sent:', { to, subject });
+    console.warn('   Required environment variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS');
+    return { success: false, reason: 'SMTP not configured' };
   }
   
   if (!to) {
-    console.warn('No recipient email provided');
-    return;
+    console.warn('⚠️ No recipient email provided');
+    return { success: false, reason: 'No recipient' };
   }
   
   try {
@@ -45,12 +62,16 @@ async function sendEmail({ to, subject, html }) {
       subject,
       html,
     });
-    console.log('Email sent successfully to:', to);
-    console.log('Message ID:', info.messageId);
-    return info;
+    console.log('✅ Email sent successfully to:', to);
+    console.log('   Message ID:', info.messageId);
+    return { success: true, messageId: info.messageId };
   } catch (err) {
-    console.error('Email sending failed:', err);
-    throw new Error(`Failed to send email: ${err.message}`);
+    // Log error but don't throw - allow application to continue
+    console.error('❌ Email sending failed:', err.message);
+    if (err.message.includes('Invalid login') || err.message.includes('WebLoginRequired')) {
+      console.error('💡 Google SMTP requires App Password. Generate one at: https://myaccount.google.com/apppasswords');
+    }
+    return { success: false, error: err.message };
   }
 }
 
@@ -369,13 +390,15 @@ exports.notifyManagerStatusChange = async (manager, admin, isActive) => {
   }
 };
 
-// Notify admins and a manager when an animal is detected
-exports.notifyAnimalDetection = async (detection, manager, admins) => {
+// Notify when an animal is detected (simplified signature for YOLO integration)
+exports.notifyAnimalDetection = async (user, animalName, confidence) => {
   try {
-    const animalName = detection.label.charAt(0).toUpperCase() + detection.label.slice(1);
-    const subject = `🚨 ${animalName} Detected - Immediate Action Required`;
+    const User = require('../models/user');
+    const animalNameFormatted = animalName.charAt(0).toUpperCase() + animalName.slice(1);
+    const confidencePercent = Math.round(confidence);
+    const subject = `🚨 ${animalNameFormatted} Detected - ${confidencePercent}% Confidence`;
     
-    const detectionTime = new Date(detection.detectedAt).toLocaleString('en-US', {
+    const detectionTime = new Date().toLocaleString('en-US', {
       dateStyle: 'full',
       timeStyle: 'short'
     });
@@ -388,18 +411,15 @@ exports.notifyAnimalDetection = async (detection, manager, admins) => {
         
         <div style="background-color: #fff; padding: 30px; border: 2px solid #dc2626; border-top: none; border-radius: 0 0 10px 10px;">
           <div style="background-color: #fef2f2; padding: 20px; border-left: 4px solid #dc2626; margin-bottom: 20px;">
-            <h3 style="color: #991b1b; margin: 0 0 10px 0; font-size: 20px;">Detected Animal: ${animalName}</h3>
+            <h3 style="color: #991b1b; margin: 0 0 10px 0; font-size: 20px;">Detected Animal: ${animalNameFormatted}</h3>
+            <p style="color: #991b1b; margin: 5px 0 0 0; font-size: 16px;">Confidence: ${confidencePercent}%</p>
           </div>
           
           <div style="margin: 20px 0;">
             <table style="width: 100%; border-collapse: collapse;">
               <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 12px 0; font-weight: bold; color: #374151; width: 40%;">🏢 Property:</td>
-                <td style="padding: 12px 0; color: #1f2937;">${detection.propertyName || 'Unknown Property'}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 12px 0; font-weight: bold; color: #374151;">📍 Location:</td>
-                <td style="padding: 12px 0; color: #1f2937;">${detection.location || 'Not specified'}</td>
+                <td style="padding: 12px 0; font-weight: bold; color: #374151; width: 40%;">👤 Detected By:</td>
+                <td style="padding: 12px 0; color: #1f2937;">${user.name || 'System'}</td>
               </tr>
               <tr style="border-bottom: 1px solid #e5e7eb;">
                 <td style="padding: 12px 0; font-weight: bold; color: #374151;">⏰ Time:</td>
@@ -407,7 +427,7 @@ exports.notifyAnimalDetection = async (detection, manager, admins) => {
               </tr>
               <tr>
                 <td style="padding: 12px 0; font-weight: bold; color: #374151;">📷 Source:</td>
-                <td style="padding: 12px 0; color: #1f2937;">${detection.source === 'video' ? 'Live Camera' : 'Uploaded Image'}</td>
+                <td style="padding: 12px 0; color: #1f2937;">ESP32 Camera / YOLO Detection</td>
               </tr>
             </table>
           </div>
@@ -429,18 +449,19 @@ exports.notifyAnimalDetection = async (detection, manager, admins) => {
       </div>
     `;
 
-    // Notify the manager
-    if (manager?.email) {
+    // Notify the user who detected it
+    if (user?.email) {
       await sendEmail({ 
-        to: manager.email, 
+        to: user.email, 
         subject: subject,
         html: html
       });
     }
 
     // Notify all admins
+    const admins = await User.find({ role: 'admin' });
     for (const admin of admins || []) {
-      if (admin.email) {
+      if (admin.email && admin._id.toString() !== user._id?.toString()) {
         await sendEmail({ 
           to: admin.email, 
           subject: `[Admin Alert] ${subject}`,

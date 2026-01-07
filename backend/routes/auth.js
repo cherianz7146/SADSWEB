@@ -3,6 +3,7 @@ const router = express.Router();
 
 const { verifyGoogleIdToken, getGoogleClientId, register, login, me } = require('../controllers/authcontroller');
 const { authRequired } = require('../middleware/auth');
+const checkDatabaseConnection = require('../middleware/dbCheck');
 
 router.post('/google', verifyGoogleIdToken);
 router.get('/google-client-id', getGoogleClientId);

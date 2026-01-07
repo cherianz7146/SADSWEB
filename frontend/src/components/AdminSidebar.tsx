@@ -1,22 +1,33 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { 
-  HomeIcon, 
-  UsersIcon, 
-  ChartBarIcon, 
-  BellIcon, 
+import {
+  HomeIcon,
+  UsersIcon,
+  ChartBarIcon,
+  BellIcon,
   ShieldCheckIcon,
   CameraIcon,
-  DevicePhoneMobileIcon
+  DevicePhoneMobileIcon,
+  CpuChipIcon,
+  ArrowRightOnRectangleIcon,
+  UserIcon,
+  MapPinIcon
 } from '@heroicons/react/24/outline';
 
-const AdminSidebar: React.FC = () => {
+interface AdminSidebarProps {
+  onLogout: () => void;
+}
+
+const AdminSidebar: React.FC<AdminSidebarProps> = ({ onLogout }) => {
   const location = useLocation();
 
   const menuItems = [
     { name: 'Home', href: '/admin', icon: HomeIcon },
+    { name: 'My Profile', href: '/admin/profile', icon: UserIcon },
+    { name: 'Manager Profiles', href: '/admin/manager-profiles', icon: UsersIcon },
+    { name: 'Field Management', href: '/admin/field-management', icon: MapPinIcon },
+    { name: 'Devices', href: '/devices', icon: CpuChipIcon },
     { name: 'Camera Detection', href: '/admin/camera', icon: CameraIcon },
-    { name: 'Managers', href: '/admin/managers', icon: UsersIcon },
     { name: 'Detection Reports', href: '/admin/detection-report', icon: ChartBarIcon },
     { name: 'Notifications', href: '/admin/notifications', icon: BellIcon },
     { name: 'Alert Settings', href: '/admin/alert-settings', icon: DevicePhoneMobileIcon },
@@ -32,7 +43,7 @@ const AdminSidebar: React.FC = () => {
           <span className="text-xl font-bold">SADS Admin</span>
         </div>
       </div>
-      
+
       <nav className="mt-8">
         {menuItems.map((item) => {
           const isActive = location.pathname === item.href;
@@ -40,11 +51,10 @@ const AdminSidebar: React.FC = () => {
             <Link
               key={item.name}
               to={item.href}
-              className={`flex items-center px-6 py-3 text-sm font-medium transition-colors ${
-                isActive
-                  ? 'bg-emerald-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-              }`}
+              className={`flex items-center px-6 py-3 text-sm font-medium transition-colors ${isActive
+                ? 'bg-emerald-600 text-white'
+                : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                }`}
             >
               <item.icon className="h-5 w-5 mr-3" />
               {item.name}
@@ -52,6 +62,16 @@ const AdminSidebar: React.FC = () => {
           );
         })}
       </nav>
+
+      <div className="p-4 border-t border-gray-800 mt-auto">
+        <button
+          onClick={onLogout}
+          className="w-full flex items-center space-x-3 px-4 py-3 text-gray-400 hover:bg-gray-800 hover:text-white rounded-lg transition-colors"
+        >
+          <ArrowRightOnRectangleIcon className="h-5 w-5" />
+          <span className="font-medium">Logout</span>
+        </button>
+      </div>
     </div>
   );
 };

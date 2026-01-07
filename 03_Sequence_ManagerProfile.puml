@@ -1,0 +1,44 @@
+@startuml SequenceManagerProfile
+actor Manager
+participant "Frontend" as Frontend
+participant "Profile Controller" as Controller
+participant "Manager Profile Model" as ProfileModel
+participant "Stats Service" as StatsService
+participant "Detection Model" as DetectionModel
+database "MongoDB" as DB
+
+Manager -> Frontend: Navigate to Profile Page
+Frontend -> Controller: GET /api/profile/:managerId
+activate Controller
+
+Controller -> ProfileModel: findOne({Manager_Id})
+activate ProfileModel
+ProfileModel -> DB: Query Manager Profile
+DB --> ProfileModel: Profile Data
+ProfileModel --> Controller: Profile Object
+deactivate ProfileModel
+
+Controller -> StatsService: Get Performance Stats
+activate StatsService
+StatsService -> DetectionModel: countDocuments({userId})
+StatsService -> DetectionModel: aggregate(detections by type)
+StatsService -> DB: Query Detections
+DB --> StatsService: Detection Stats
+StatsService --> Controller: Performance Metrics
+deactivate StatsService
+
+Controller -> ProfileModel: Calculate Performance Score
+activate ProfileModel
+ProfileModel --> Controller: Updated Score
+deactivate ProfileModel
+
+Controller --> Frontend: {profile, stats, achievements}
+Frontend --> Manager: Display Profile Page
+deactivate Controller
+
+@enduml
+
+
+
+
+

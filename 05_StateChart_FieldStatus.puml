@@ -1,0 +1,26 @@
+@startuml StateFieldStatus
+[*] --> Unassigned: Field Created
+
+Unassigned --> Active: Manager Assigned
+Active --> Inactive: Admin Deactivates
+Active --> Maintenance: Maintenance Required
+Inactive --> Active: Reactivated
+Maintenance --> Active: Maintenance Complete
+Maintenance --> Inactive: Permanently Disabled
+
+state Active {
+  [*] --> Monitoring
+  Monitoring --> Alert: Detection Triggered
+  Alert --> Monitoring: Alert Handled
+  Monitoring --> Maintenance: Issue Detected
+}
+
+Inactive --> [*]: Field Deleted
+Maintenance --> [*]: Field Deleted
+
+@enduml
+
+
+
+
+

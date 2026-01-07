@@ -1,0 +1,134 @@
+@startuml ClassDiagram
+package "User Management" {
+  class User {
+    -ObjectId _id
+    -String userId
+    -String name
+    -String email
+    -String phone
+    -String role
+    -Plantation plantation
+    -Permissions permissions
+    -Boolean isActive
+    -Date lastLogin
+    +login()
+    +logout()
+    +updateProfile()
+  }
+  
+  class ManagerProfile {
+    -ObjectId _id
+    -ObjectId Manager_Id
+    -Number totalDetections
+    -Number totalProperties
+    -Number totalCameras
+    -Number performanceScore
+    -Array achievements
+    -Date lastActiveDate
+    +calculatePerformanceScore()
+    +updateStats()
+    +addAchievement()
+  }
+}
+
+package "Device Management" {
+  class Device {
+    -ObjectId _id
+    -String serialNumber
+    -String type
+    -String status
+    -Number batteryLevel
+    -Number signalStrength
+    -Date lastPing
+    -ObjectId assignedProperty
+    +sendHeartbeat()
+    +updateStatus()
+  }
+  
+  class DeviceHealth {
+    -ObjectId _id
+    -ObjectId Device_Id
+    -String status
+    -Number batteryLevel
+    -Number signalStrength
+    -Number healthScore
+    -Number uptime
+    -Date lastPing
+    +calculateHealthScore()
+    +updateHealthMetrics()
+  }
+}
+
+package "Field Management" {
+  class Field {
+    -ObjectId _id
+    -String FieldName
+    -ObjectId Plantation_Id
+    -ObjectId Manager_Id
+    -String location
+    -Object coordinates
+    -String status
+    -Number cameraCount
+    -Number totalDetections
+    +assignToManager()
+    +updateStatus()
+    +getStatistics()
+  }
+  
+  class Property {
+    -ObjectId _id
+    -String name
+    -String address
+    -ObjectId managerId
+    -Plantation plantation
+    -Number cameraCount
+    -String status
+    +assignManager()
+    +updateProperty()
+  }
+}
+
+package "Detection System" {
+  class Detection {
+    -ObjectId _id
+    -ObjectId userId
+    -ObjectId propertyId
+    -String label
+    -Number probability
+    -Date detectedAt
+    -String source
+    +createDetection()
+    +getDetections()
+  }
+  
+  class Notification {
+    -ObjectId _id
+    -ObjectId Detection_Id
+    -ObjectId Manager_Id
+    -String channel
+    -String status
+    -Date sentAt
+    -Number retries
+    +sendNotification()
+    +updateStatus()
+  }
+}
+
+' Relationships
+User "1" --> "1" ManagerProfile : has
+User "1" --> "*" Property : manages
+Property "1" --> "*" Field : contains
+Device "1" --> "1" DeviceHealth : has
+Device "*" --> "1" Property : assigned to
+Detection "*" --> "1" User : detected by
+Detection "*" --> "1" Property : detected at
+Notification "*" --> "1" Detection : references
+Notification "*" --> "1" User : sent to
+Field "*" --> "1" User : assigned to
+
+@enduml
+
+
+
+
+

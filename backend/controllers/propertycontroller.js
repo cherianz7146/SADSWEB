@@ -96,6 +96,23 @@ async function createProperty(req, res) {
     await property.save();
     await property.populate('managerId', 'name email');
     
+    // Log activity (non-blocking) - only for admin
+    if (req.user && req.user.role === 'admin') {
+      const { logActivity, getIpAddress } = require('../utils/activityLogger');
+      logActivity(
+        req.user._id,
+        'property_created',
+        `Created property: ${property.name}`,
+        { 
+          propertyId: property._id.toString(), 
+          propertyName: property.name, 
+          managerId: managerId,
+          managerName: manager.name
+        },
+        getIpAddress(req)
+      ).catch(err => console.error('Failed to log property creation activity:', err));
+    }
+    
     res.status(201).json(property);
   } catch (err) {
     console.error('Error creating property:', err);
@@ -121,7 +138,7 @@ async function updateProperty(req, res) {
       return res.status(403).json({ message: 'Access denied' });
     }
     
-    const { name, address, description, cameraCount, managerId, status, location, settings } = req.body;
+    const { name, address, description, cameraCount, managerId, status, location, settings, images, profileImage } = req.body;
     
     if (managerId && managerId !== property.managerId.toString()) {
       const manager = await User.findById(managerId);
@@ -131,6 +148,7 @@ async function updateProperty(req, res) {
     }
     
     if (name !== undefined) property.name = name;
+    if (images !== undefined) property.images = images;
     if (address !== undefined) property.address = address;
     if (description !== undefined) property.description = description;
     if (cameraCount !== undefined) property.cameraCount = cameraCount;
@@ -138,9 +156,35 @@ async function updateProperty(req, res) {
     if (status !== undefined) property.status = status;
     if (location !== undefined) property.location = location;
     if (settings !== undefined) property.settings = { ...property.settings, ...settings };
+    if (profileImage !== undefined) property.profileImage = profileImage;
     
     await property.save();
     await property.populate('managerId', 'name email');
+    
+    // Log activity (non-blocking) - only for admin
+    if (req.user && req.user.role === 'admin') {
+      const { logActivity, getIpAddress } = require('../utils/activityLogger');
+      const changes = [];
+      if (name !== undefined) changes.push('name');
+      if (address !== undefined) changes.push('address');
+      if (status !== undefined) changes.push('status');
+      if (managerId !== undefined) changes.push('manager');
+      if (cameraCount !== undefined) changes.push('cameras');
+      
+      if (changes.length > 0) {
+        logActivity(
+          req.user._id,
+          'property_updated',
+          `Updated property: ${property.name} - Changed: ${changes.join(', ')}`,
+          { 
+            propertyId: property._id.toString(), 
+            propertyName: property.name,
+            changes: changes
+          },
+          getIpAddress(req)
+        ).catch(err => console.error('Failed to log property update activity:', err));
+      }
+    }
     
     res.json(property);
   } catch (err) {

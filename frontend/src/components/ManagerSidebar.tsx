@@ -1,14 +1,16 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  HomeIcon, 
-  CameraIcon, 
-  ChartBarIcon, 
+import {
+  HomeIcon,
+  CameraIcon,
+  ChartBarIcon,
   Cog6ToothIcon,
   BellIcon,
   ArrowRightOnRectangleIcon,
   MapPinIcon,
-  ShieldCheckIcon
+  ShieldCheckIcon,
+  CpuChipIcon,
+  UserIcon
 } from '@heroicons/react/24/outline';
 
 interface ManagerSidebarProps {
@@ -17,7 +19,9 @@ interface ManagerSidebarProps {
 
 const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ onLogout }) => {
   const menuItems = [
-    { path: '/dashboard', label: 'Overview', icon: HomeIcon },
+    { path: '/dashboard', label: 'Dashboard', icon: HomeIcon },
+    { path: '/dashboard/profile', label: 'My Profile', icon: UserIcon },
+    { path: '/devices', label: 'Devices', icon: CpuChipIcon },
     { path: '/dashboard/plantations', label: 'My Plantation', icon: MapPinIcon },
     { path: '/dashboard/cameras', label: 'Camera Feeds', icon: CameraIcon },
     { path: '/dashboard/deterrents', label: 'Deterrent Control', icon: ShieldCheckIcon },
@@ -48,10 +52,9 @@ const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ onLogout }) => {
             key={item.path}
             to={item.path}
             className={({ isActive }) =>
-              `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${
-                isActive
-                  ? 'bg-emerald-50 text-emerald-700 border-r-2 border-emerald-700'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+              `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${isActive
+                ? 'bg-emerald-50 text-emerald-700 border-r-2 border-emerald-700'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
               }`
             }
           >
@@ -76,6 +79,8 @@ const ManagerSidebar: React.FC<ManagerSidebarProps> = ({ onLogout }) => {
 };
 
 export default ManagerSidebar;
+
+
 
 
 

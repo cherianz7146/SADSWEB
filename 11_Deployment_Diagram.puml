@@ -1,0 +1,81 @@
+@startuml DeploymentDiagram
+node "Client Browser" {
+  artifact "React Frontend" as ReactApp
+  artifact "Web Browser" as Browser
+}
+
+node "Web Server" {
+  artifact "Nginx/Apache" as WebServer
+  artifact "Static Files" as StaticFiles
+}
+
+node "Application Server" {
+  artifact "Node.js Runtime" as NodeJS
+  artifact "Express API Server" as ExpressAPI
+  database "Session Store" as SessionStore
+}
+
+node "Database Server" {
+  database "MongoDB Atlas" as MongoDB {
+    database "Users Collection" as UsersDB
+    database "Devices Collection" as DevicesDB
+    database "Device Health Collection" as HealthDB
+    database "Fields Collection" as FieldsDB
+    database "Properties Collection" as PropertiesDB
+    database "Detections Collection" as DetectionsDB
+    database "Manager Profiles Collection" as ProfilesDB
+  }
+}
+
+node "ML Service Server" {
+  artifact "Python Flask/FastAPI" as MLServer
+  artifact "YOLO Model" as YOLOModel
+  artifact "Image Processing" as ImageProc
+}
+
+node "External Services" {
+  cloud "Twilio API" as Twilio
+  cloud "Email Service (SMTP)" as Email
+  cloud "Google OAuth" as GoogleAuth
+}
+
+node "IoT Devices" {
+  artifact "Camera Devices" as Cameras
+  artifact "Sensor Devices" as Sensors
+  artifact "Deterrent Devices" as Deterrents
+}
+
+Browser --> WebServer : HTTPS
+WebServer --> StaticFiles
+ReactApp --> ExpressAPI : API Calls
+ExpressAPI --> NodeJS
+ExpressAPI --> SessionStore
+
+ExpressAPI --> MongoDB : Database Queries
+MongoDB --> UsersDB
+MongoDB --> DevicesDB
+MongoDB --> HealthDB
+MongoDB --> FieldsDB
+MongoDB --> PropertiesDB
+MongoDB --> DetectionsDB
+MongoDB --> ProfilesDB
+
+ExpressAPI --> MLServer : Detection Requests
+MLServer --> YOLOModel
+YOLOModel --> ImageProc
+
+ExpressAPI --> Twilio : SMS/WhatsApp
+ExpressAPI --> Email : Email Notifications
+ExpressAPI --> GoogleAuth : OAuth
+
+Cameras --> ExpressAPI : Heartbeat/Data
+Sensors --> ExpressAPI : Heartbeat/Data
+Deterrents --> ExpressAPI : Control Commands
+Cameras --> MLServer : Image Streams
+
+@enduml
+
+
+
+
+

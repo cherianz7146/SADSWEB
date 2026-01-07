@@ -1,0 +1,695 @@
+@startuml
+!theme plain
+title SADS Project - Complete UML Diagrams Collection
+
+' ============================================
+' 1. USE CASE DIAGRAM
+' ============================================
+@startuml UseCaseDiagram
+left to right direction
+skinparam packageStyle rectangle
+
+actor Admin
+actor Manager
+actor "IoT Device" as Device
+actor "ML Service" as MLService
+
+rectangle "SADS System" {
+  package "Authentication" {
+    usecase "Login" as UC1
+    usecase "Register" as UC2
+    usecase "Password Reset" as UC3
+    usecase "Google OAuth" as UC4
+  }
+  
+  package "Manager Profile" {
+    usecase "View Profile" as UC5
+    usecase "View Performance Stats" as UC6
+    usecase "View Activity History" as UC7
+    usecase "View Achievements" as UC8
+    usecase "Update Profile" as UC9
+  }
+  
+  package "IoT Device Health" {
+    usecase "Register Device" as UC10
+    usecase "Send Heartbeat" as UC11
+    usecase "Monitor Device Status" as UC12
+    usecase "View Battery Level" as UC13
+    usecase "View Signal Strength" as UC14
+    usecase "Device Maintenance" as UC15
+    usecase "View Health Score" as UC16
+  }
+  
+  package "Field Management" {
+    usecase "Create Field" as UC17
+    usecase "Assign Field to Manager" as UC18
+    usecase "View Field Details" as UC19
+    usecase "Update Field Info" as UC20
+    usecase "Delete Field" as UC21
+    usecase "View Field Statistics" as UC22
+  }
+  
+  package "Detection & Monitoring" {
+    usecase "Detect Animals" as UC23
+    usecase "View Detections" as UC24
+    usecase "Generate Reports" as UC25
+    usecase "Configure Alerts" as UC26
+  }
+  
+  package "Property Management" {
+    usecase "Create Property" as UC27
+    usecase "Assign Manager" as UC28
+    usecase "View Properties" as UC29
+    usecase "Update Property" as UC30
+  }
+  
+  package "Notification System" {
+    usecase "Send SMS Alert" as UC31
+    usecase "Send Email Alert" as UC32
+    usecase "Send WhatsApp Alert" as UC33
+    usecase "View Notifications" as UC34
+  }
+}
+
+Admin --> UC1
+Admin --> UC2
+Admin --> UC5
+Admin --> UC6
+Admin --> UC7
+Admin --> UC10
+Admin --> UC12
+Admin --> UC15
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+Admin --> UC21
+Admin --> UC27
+Admin --> UC28
+Admin --> UC29
+Admin --> UC30
+Admin --> UC34
+
+Manager --> UC1
+Manager --> UC5
+Manager --> UC6
+Manager --> UC7
+Manager --> UC8
+Manager --> UC9
+Manager --> UC12
+Manager --> UC13
+Manager --> UC14
+Manager --> UC19
+Manager --> UC22
+Manager --> UC24
+Manager --> UC25
+Manager --> UC26
+Manager --> UC34
+
+Device --> UC11
+Device --> UC12
+
+MLService --> UC23
+UC23 --> UC31
+UC23 --> UC32
+UC23 --> UC33
+
+@enduml
+
+' ============================================
+' 2. SEQUENCE DIAGRAM - Device Heartbeat Flow
+' ============================================
+@startuml SequenceDeviceHeartbeat
+actor "IoT Device" as Device
+participant "Device Controller" as Controller
+participant "Device Model" as Model
+participant "Device Health Service" as HealthService
+database "MongoDB" as DB
+
+Device -> Controller: POST /api/devices/heartbeat\n{serialNumber, batteryLevel, signalStrength}
+activate Controller
+
+Controller -> Model: findOne({serialNumber})
+activate Model
+Model -> DB: Query Device
+DB --> Model: Device Data
+Model --> Controller: Device Object
+deactivate Model
+
+Controller -> Model: Update device status
+activate Model
+Model -> DB: Update lastPing, status, batteryLevel, signalStrength
+DB --> Model: Updated Device
+Model --> Controller: Success
+deactivate Model
+
+Controller -> HealthService: Calculate Health Score
+activate HealthService
+HealthService -> HealthService: Calculate: (battery*0.3 + signal*0.3 + uptime*0.4)
+HealthService -> DB: Save Health Record
+DB --> HealthService: Saved
+HealthService --> Controller: Health Score
+deactivate HealthService
+
+Controller --> Device: {message: "Heartbeat received", config}
+deactivate Controller
+
+@enduml
+
+' ============================================
+' 3. SEQUENCE DIAGRAM - Manager Profile View
+' ============================================
+@startuml SequenceManagerProfile
+actor Manager
+participant "Frontend" as Frontend
+participant "Profile Controller" as Controller
+participant "Manager Profile Model" as ProfileModel
+participant "Stats Service" as StatsService
+participant "Detection Model" as DetectionModel
+database "MongoDB" as DB
+
+Manager -> Frontend: Navigate to Profile Page
+Frontend -> Controller: GET /api/profile/:managerId
+activate Controller
+
+Controller -> ProfileModel: findOne({Manager_Id})
+activate ProfileModel
+ProfileModel -> DB: Query Manager Profile
+DB --> ProfileModel: Profile Data
+ProfileModel --> Controller: Profile Object
+deactivate ProfileModel
+
+Controller -> StatsService: Get Performance Stats
+activate StatsService
+StatsService -> DetectionModel: countDocuments({userId})
+StatsService -> DetectionModel: aggregate(detections by type)
+StatsService -> DB: Query Detections
+DB --> StatsService: Detection Stats
+StatsService --> Controller: Performance Metrics
+deactivate StatsService
+
+Controller -> ProfileModel: Calculate Performance Score
+activate ProfileModel
+ProfileModel --> Controller: Updated Score
+deactivate ProfileModel
+
+Controller --> Frontend: {profile, stats, achievements}
+Frontend --> Manager: Display Profile Page
+deactivate Controller
+
+@enduml
+
+' ============================================
+' 4. STATE CHART DIAGRAM - Device Status
+' ============================================
+@startuml StateDeviceStatus
+[*] --> Offline: Device Registered
+
+Offline --> Online: Heartbeat Received
+Online --> Offline: No Heartbeat (Timeout)
+Online --> Maintenance: Admin Sets Maintenance
+Maintenance --> Online: Maintenance Complete
+Maintenance --> Offline: Device Disabled
+
+state Online {
+  [*] --> Normal
+  Normal --> LowBattery: Battery < 20%
+  Normal --> LowSignal: Signal < 30%
+  LowBattery --> Normal: Battery Charged
+  LowSignal --> Normal: Signal Restored
+  LowBattery --> Critical: Battery < 10%
+  LowSignal --> Critical: Signal < 10%
+  Critical --> Maintenance: Requires Attention
+}
+
+Offline --> [*]: Device Deleted
+
+@enduml
+
+' ============================================
+' 5. STATE CHART DIAGRAM - Field Status
+' ============================================
+@startuml StateFieldStatus
+[*] --> Unassigned: Field Created
+
+Unassigned --> Active: Manager Assigned
+Active --> Inactive: Admin Deactivates
+Active --> Maintenance: Maintenance Required
+Inactive --> Active: Reactivated
+Maintenance --> Active: Maintenance Complete
+Maintenance --> Inactive: Permanently Disabled
+
+state Active {
+  [*] --> Monitoring
+  Monitoring --> Alert: Detection Triggered
+  Alert --> Monitoring: Alert Handled
+  Monitoring --> Maintenance: Issue Detected
+}
+
+Inactive --> [*]: Field Deleted
+Maintenance --> [*]: Field Deleted
+
+@enduml
+
+' ============================================
+' 6. ACTIVITY DIAGRAM - Field Assignment Process
+' ============================================
+@startuml ActivityFieldAssignment
+start
+:Admin selects Property;
+:Admin clicks "Assign Manager";
+:System displays unassigned managers;
+:Admin selects Manager;
+:Admin enters Plantation Info;
+:Admin adds Fields;
+repeat
+  :Enter Field Name;
+  :Add Field to List;
+repeat while (More Fields?) is (yes)
+->no;
+:Admin submits form;
+:Validate Manager exists;
+:Validate Manager is active;
+:Validate Property exists;
+if (Validation successful?) then (yes)
+  :Update Property with Manager;
+  :Update Manager with Plantation Info;
+  :Save Fields to Database;
+  :Send Notification Email to Manager;
+  :Display Success Message;
+else (no)
+  :Display Error Message;
+  stop
+endif
+stop
+
+@enduml
+
+' ============================================
+' 7. ACTIVITY DIAGRAM - Animal Detection Flow
+' ============================================
+@startuml ActivityDetectionFlow
+start
+:Camera captures image/video;
+:Send to ML Service (YOLO);
+:ML Service processes image;
+:Animal detected?;
+if (Detection?) then (yes)
+  :Calculate confidence score;
+  :Save detection to database;
+  :Check if target animal;
+  if (Target animal?) then (yes)
+    :Check confidence >= threshold;
+    if (High confidence?) then (yes)
+      :Activate deterrent system;
+      :Send critical alert (SMS + WhatsApp + Call);
+    else (no)
+      :Send warning alert (SMS + WhatsApp);
+    endif
+  else (no)
+    :Log detection only;
+    :Send info alert (SMS);
+  endif
+  :Update manager profile stats;
+  :Update field statistics;
+  :Update device health metrics;
+else (no)
+  :Continue monitoring;
+endif
+stop
+
+@enduml
+
+' ============================================
+' 8. CLASS DIAGRAM - Core Models
+' ============================================
+@startuml ClassDiagram
+package "User Management" {
+  class User {
+    -ObjectId _id
+    -String userId
+    -String name
+    -String email
+    -String phone
+    -String role
+    -Plantation plantation
+    -Permissions permissions
+    -Boolean isActive
+    -Date lastLogin
+    +login()
+    +logout()
+    +updateProfile()
+  }
+  
+  class ManagerProfile {
+    -ObjectId _id
+    -ObjectId Manager_Id
+    -Number totalDetections
+    -Number totalProperties
+    -Number totalCameras
+    -Number performanceScore
+    -Array achievements
+    -Date lastActiveDate
+    +calculatePerformanceScore()
+    +updateStats()
+    +addAchievement()
+  }
+}
+
+package "Device Management" {
+  class Device {
+    -ObjectId _id
+    -String serialNumber
+    -String type
+    -String status
+    -Number batteryLevel
+    -Number signalStrength
+    -Date lastPing
+    -ObjectId assignedProperty
+    +sendHeartbeat()
+    +updateStatus()
+  }
+  
+  class DeviceHealth {
+    -ObjectId _id
+    -ObjectId Device_Id
+    -String status
+    -Number batteryLevel
+    -Number signalStrength
+    -Number healthScore
+    -Number uptime
+    -Date lastPing
+    +calculateHealthScore()
+    +updateHealthMetrics()
+  }
+}
+
+package "Field Management" {
+  class Field {
+    -ObjectId _id
+    -String FieldName
+    -ObjectId Plantation_Id
+    -ObjectId Manager_Id
+    -String location
+    -Object coordinates
+    -String status
+    -Number cameraCount
+    -Number totalDetections
+    +assignToManager()
+    +updateStatus()
+    +getStatistics()
+  }
+  
+  class Property {
+    -ObjectId _id
+    -String name
+    -String address
+    -ObjectId managerId
+    -Plantation plantation
+    -Number cameraCount
+    -String status
+    +assignManager()
+    +updateProperty()
+  }
+}
+
+package "Detection System" {
+  class Detection {
+    -ObjectId _id
+    -ObjectId userId
+    -ObjectId propertyId
+    -String label
+    -Number probability
+    -Date detectedAt
+    -String source
+    +createDetection()
+    +getDetections()
+  }
+  
+  class Notification {
+    -ObjectId _id
+    -ObjectId Detection_Id
+    -ObjectId Manager_Id
+    -String channel
+    -String status
+    -Date sentAt
+    -Number retries
+    +sendNotification()
+    +updateStatus()
+  }
+}
+
+' Relationships
+User "1" --> "1" ManagerProfile : has
+User "1" --> "*" Property : manages
+Property "1" --> "*" Field : contains
+Device "1" --> "1" DeviceHealth : has
+Device "*" --> "1" Property : assigned to
+Detection "*" --> "1" User : detected by
+Detection "*" --> "1" Property : detected at
+Notification "*" --> "1" Detection : references
+Notification "*" --> "1" User : sent to
+Field "*" --> "1" User : assigned to
+
+@enduml
+
+' ============================================
+' 9. OBJECT DIAGRAM - System State Example
+' ============================================
+@startuml ObjectDiagram
+object manager1 {
+  _id = "507f1f77bcf86cd799439011"
+  name = "John Doe"
+  email = "john@example.com"
+  role = "manager"
+  isActive = true
+}
+
+object profile1 {
+  _id = "507f1f77bcf86cd799439012"
+  Manager_Id = "507f1f77bcf86cd799439011"
+  totalDetections = 245
+  totalProperties = 2
+  performanceScore = 87
+  achievements = ["First Detection", "100 Detections"]
+}
+
+object property1 {
+  _id = "507f1f77bcf86cd799439013"
+  name = "North Plantation"
+  managerId = "507f1f77bcf86cd799439011"
+  status = "active"
+}
+
+object field1 {
+  _id = "507f1f77bcf86cd799439014"
+  FieldName = "Field 1"
+  Plantation_Id = "507f1f77bcf86cd799439013"
+  Manager_Id = "507f1f77bcf86cd799439011"
+  status = "active"
+  totalDetections = 120
+}
+
+object device1 {
+  _id = "507f1f77bcf86cd799439015"
+  serialNumber = "DEV-001"
+  type = "camera"
+  status = "online"
+  batteryLevel = 85
+  signalStrength = 92
+  assignedProperty = "507f1f77bcf86cd799439013"
+}
+
+object health1 {
+  _id = "507f1f77bcf86cd799439016"
+  Device_Id = "507f1f77bcf86cd799439015"
+  status = "online"
+  batteryLevel = 85
+  signalStrength = 92
+  healthScore = 89
+  uptime = 98.5
+}
+
+manager1 --> profile1 : has profile
+manager1 --> property1 : manages
+property1 --> field1 : contains
+device1 --> health1 : has health
+device1 --> property1 : assigned to
+field1 --> manager1 : assigned to
+
+@enduml
+
+' ============================================
+' 10. COMPONENT DIAGRAM
+' ============================================
+@startuml ComponentDiagram
+package "Frontend Layer" {
+  component [React Frontend] as Frontend {
+    component [Pages] as Pages
+    component [Components] as Components
+    component [Contexts] as Contexts
+    component [Utils] as Utils
+  }
+}
+
+package "Backend Layer" {
+  component [Express API] as API {
+    component [Routes] as Routes
+    component [Controllers] as Controllers
+    component [Middleware] as Middleware
+  }
+  
+  component [Business Logic] as Business {
+    component [Device Health Service] as DeviceHealthService
+    component [Manager Profile Service] as ProfileService
+    component [Field Management Service] as FieldService
+    component [Detection Service] as DetectionService
+    component [Notification Service] as NotificationService
+  }
+  
+  component [Data Access Layer] as DAL {
+    component [User Model] as UserModel
+    component [Device Model] as DeviceModel
+    component [Device Health Model] as HealthModel
+    component [Field Model] as FieldModel
+    component [Property Model] as PropertyModel
+    component [Detection Model] as DetectionModel
+    component [Manager Profile Model] as ProfileModel
+  }
+}
+
+package "External Services" {
+  component [MongoDB] as MongoDB
+  component [ML Service (YOLO)] as MLService
+  component [Twilio SMS] as Twilio
+  component [Email Service] as EmailService
+}
+
+package "IoT Layer" {
+  component [IoT Devices] as Devices {
+    component [Cameras] as Cameras
+    component [Sensors] as Sensors
+    component [Deterrents] as Deterrents
+  }
+}
+
+Frontend --> API : HTTP/REST
+Pages --> Components
+Components --> Contexts
+Contexts --> Utils
+
+API --> Business
+Routes --> Controllers
+Controllers --> Middleware
+Controllers --> Business
+
+Business --> DAL
+DeviceHealthService --> HealthModel
+ProfileService --> ProfileModel
+FieldService --> FieldModel
+DetectionService --> DetectionModel
+NotificationService --> EmailService
+NotificationService --> Twilio
+
+DAL --> MongoDB
+UserModel --> MongoDB
+DeviceModel --> MongoDB
+HealthModel --> MongoDB
+FieldModel --> MongoDB
+PropertyModel --> MongoDB
+DetectionModel --> MongoDB
+ProfileModel --> MongoDB
+
+Business --> MLService : API Calls
+Devices --> API : Heartbeat
+Cameras --> MLService : Image/Video
+MLService --> Business : Detection Results
+
+@enduml
+
+' ============================================
+' 11. DEPLOYMENT DIAGRAM
+' ============================================
+@startuml DeploymentDiagram
+node "Client Browser" {
+  artifact "React Frontend" as ReactApp
+  artifact "Web Browser" as Browser
+}
+
+node "Web Server" {
+  artifact "Nginx/Apache" as WebServer
+  artifact "Static Files" as StaticFiles
+}
+
+node "Application Server" {
+  artifact "Node.js Runtime" as NodeJS
+  artifact "Express API Server" as ExpressAPI
+  database "Session Store" as SessionStore
+}
+
+node "Database Server" {
+  database "MongoDB Atlas" as MongoDB {
+    database "Users Collection" as UsersDB
+    database "Devices Collection" as DevicesDB
+    database "Device Health Collection" as HealthDB
+    database "Fields Collection" as FieldsDB
+    database "Properties Collection" as PropertiesDB
+    database "Detections Collection" as DetectionsDB
+    database "Manager Profiles Collection" as ProfilesDB
+  }
+}
+
+node "ML Service Server" {
+  artifact "Python Flask/FastAPI" as MLServer
+  artifact "YOLO Model" as YOLOModel
+  artifact "Image Processing" as ImageProc
+}
+
+node "External Services" {
+  cloud "Twilio API" as Twilio
+  cloud "Email Service (SMTP)" as Email
+  cloud "Google OAuth" as GoogleAuth
+}
+
+node "IoT Devices" {
+  artifact "Camera Devices" as Cameras
+  artifact "Sensor Devices" as Sensors
+  artifact "Deterrent Devices" as Deterrents
+}
+
+Browser --> WebServer : HTTPS
+WebServer --> StaticFiles
+ReactApp --> ExpressAPI : API Calls
+ExpressAPI --> NodeJS
+ExpressAPI --> SessionStore
+
+ExpressAPI --> MongoDB : Database Queries
+MongoDB --> UsersDB
+MongoDB --> DevicesDB
+MongoDB --> HealthDB
+MongoDB --> FieldsDB
+MongoDB --> PropertiesDB
+MongoDB --> DetectionsDB
+MongoDB --> ProfilesDB
+
+ExpressAPI --> MLServer : Detection Requests
+MLServer --> YOLOModel
+YOLOModel --> ImageProc
+
+ExpressAPI --> Twilio : SMS/WhatsApp
+ExpressAPI --> Email : Email Notifications
+ExpressAPI --> GoogleAuth : OAuth
+
+Cameras --> ExpressAPI : Heartbeat/Data
+Sensors --> ExpressAPI : Heartbeat/Data
+Deterrents --> ExpressAPI : Control Commands
+Cameras --> MLServer : Image Streams
+
+@enduml
+
+@enduml
+
+
+
+
+

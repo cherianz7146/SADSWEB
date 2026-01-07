@@ -1,0 +1,115 @@
+@startuml UseCaseDiagram
+left to right direction
+skinparam packageStyle rectangle
+
+actor Admin
+actor Manager
+actor "IoT Device" as Device
+actor "ML Service" as MLService
+
+rectangle "SADS System" {
+  package "Authentication" {
+    usecase "Login" as UC1
+    usecase "Register" as UC2
+    usecase "Password Reset" as UC3
+    usecase "Google OAuth" as UC4
+  }
+  
+  package "Manager Profile" {
+    usecase "View Profile" as UC5
+    usecase "View Performance Stats" as UC6
+    usecase "View Activity History" as UC7
+    usecase "View Achievements" as UC8
+    usecase "Update Profile" as UC9
+  }
+  
+  package "IoT Device Health" {
+    usecase "Register Device" as UC10
+    usecase "Send Heartbeat" as UC11
+    usecase "Monitor Device Status" as UC12
+    usecase "View Battery Level" as UC13
+    usecase "View Signal Strength" as UC14
+    usecase "Device Maintenance" as UC15
+    usecase "View Health Score" as UC16
+  }
+  
+  package "Field Management" {
+    usecase "Create Field" as UC17
+    usecase "Assign Field to Manager" as UC18
+    usecase "View Field Details" as UC19
+    usecase "Update Field Info" as UC20
+    usecase "Delete Field" as UC21
+    usecase "View Field Statistics" as UC22
+  }
+  
+  package "Detection & Monitoring" {
+    usecase "Detect Animals" as UC23
+    usecase "View Detections" as UC24
+    usecase "Generate Reports" as UC25
+    usecase "Configure Alerts" as UC26
+  }
+  
+  package "Property Management" {
+    usecase "Create Property" as UC27
+    usecase "Assign Manager" as UC28
+    usecase "View Properties" as UC29
+    usecase "Update Property" as UC30
+  }
+  
+  package "Notification System" {
+    usecase "Send SMS Alert" as UC31
+    usecase "Send Email Alert" as UC32
+    usecase "Send WhatsApp Alert" as UC33
+    usecase "View Notifications" as UC34
+  }
+}
+
+Admin --> UC1
+Admin --> UC2
+Admin --> UC5
+Admin --> UC6
+Admin --> UC7
+Admin --> UC10
+Admin --> UC12
+Admin --> UC15
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+Admin --> UC21
+Admin --> UC27
+Admin --> UC28
+Admin --> UC29
+Admin --> UC30
+Admin --> UC34
+
+Manager --> UC1
+Manager --> UC5
+Manager --> UC6
+Manager --> UC7
+Manager --> UC8
+Manager --> UC9
+Manager --> UC12
+Manager --> UC13
+Manager --> UC14
+Manager --> UC19
+Manager --> UC22
+Manager --> UC24
+Manager --> UC25
+Manager --> UC26
+Manager --> UC34
+
+Device --> UC11
+Device --> UC12
+
+MLService --> UC23
+UC23 --> UC31
+UC23 --> UC32
+UC23 --> UC33
+
+@enduml
+
+
+
+
+

@@ -1,27 +1,48 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { ArrowLeftIcon, ShieldCheckIcon, LockClosedIcon, UserGroupIcon, BellAlertIcon } from '@heroicons/react/24/outline';
+import Header from '../components/Header';
 import Footer from '../components/Footer';
 
 const PrivacyPolicyPage: React.FC = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      
+      {/* Background - Same as Landing Page */}
+      <div className="relative flex-1">
+        <div className="absolute inset-0 w-full h-full">
+          <img
+            src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1920&q=80"
+            alt="Agricultural landscape"
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-black/60" />
+        </div>
+        
+        <div className="relative z-10 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+            >
         <Link
           to="/"
-          className="inline-flex items-center text-purple-600 hover:text-purple-700 mb-6 transition-colors"
+                className="inline-flex items-center text-white hover:text-gray-200 mb-6 transition-colors"
         >
           <ArrowLeftIcon className="h-5 w-5 mr-2" />
           Back to Home
         </Link>
 
-        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
-          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 px-8 py-6">
+              <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden">
+                <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-8 py-6">
             <h1 className="text-3xl font-bold text-white">Privacy Policy</h1>
-            <p className="text-purple-50 mt-2">Effective Date: October 26, 2025 | Last Updated: October 26, 2025</p>
+                  <p className="text-emerald-50 mt-2">Effective Date: October 26, 2025 | Last Updated: October 26, 2025</p>
           </div>
 
-          <div className="px-8 py-10 prose prose-purple max-w-none">
+          <div className="px-8 py-10 prose prose-emerald max-w-none">
             {/* Introduction */}
             <section className="mb-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">1. INTRODUCTION</h2>
@@ -38,7 +59,7 @@ const PrivacyPolicyPage: React.FC = () => {
               <h2 className="text-2xl font-bold text-gray-900 mb-4">2. INFORMATION WE COLLECT</h2>
               
               <h3 className="text-xl font-semibold text-gray-800 mb-3">2.1 Personal Information</h3>
-              <div className="bg-purple-50 rounded-lg p-5 mb-4">
+              <div className="bg-emerald-50 rounded-lg p-5 mb-4">
                 <p className="text-gray-700 font-semibold mb-2">Required Information:</p>
                 <ul className="list-disc list-inside space-y-2 text-gray-700 ml-4">
                   <li><strong>Full Name</strong> - To identify you in the system</li>
@@ -48,7 +69,7 @@ const PrivacyPolicyPage: React.FC = () => {
                 </ul>
               </div>
 
-              <div className="bg-indigo-50 rounded-lg p-5 mb-4">
+              <div className="bg-teal-50 rounded-lg p-5 mb-4">
                 <p className="text-gray-700 font-semibold mb-2">Optional Information:</p>
                 <ul className="list-disc list-inside space-y-2 text-gray-700 ml-4">
                   <li><strong>Phone Number</strong> - For SMS/WhatsApp alerts (E.164 format)</li>
@@ -79,9 +100,9 @@ const PrivacyPolicyPage: React.FC = () => {
               <h2 className="text-2xl font-bold text-gray-900 mb-4">3. HOW WE USE YOUR INFORMATION</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div className="bg-purple-50 rounded-lg p-4 border-l-4 border-purple-500">
+                <div className="bg-emerald-50 rounded-lg p-4 border-l-4 border-emerald-500">
                   <div className="flex items-center mb-2">
-                    <ShieldCheckIcon className="h-6 w-6 text-purple-600 mr-2" />
+                    <ShieldCheckIcon className="h-6 w-6 text-emerald-600 mr-2" />
                     <h4 className="font-semibold text-gray-800">Service Delivery</h4>
                   </div>
                   <ul className="text-sm text-gray-700 space-y-1 ml-8">
@@ -92,9 +113,9 @@ const PrivacyPolicyPage: React.FC = () => {
                   </ul>
                 </div>
 
-                <div className="bg-indigo-50 rounded-lg p-4 border-l-4 border-indigo-500">
+                <div className="bg-teal-50 rounded-lg p-4 border-l-4 border-teal-500">
                   <div className="flex items-center mb-2">
-                    <BellAlertIcon className="h-6 w-6 text-indigo-600 mr-2" />
+                    <BellAlertIcon className="h-6 w-6 text-teal-600 mr-2" />
                     <h4 className="font-semibold text-gray-800">Communication</h4>
                   </div>
                   <ul className="text-sm text-gray-700 space-y-1 ml-8">
@@ -166,14 +187,14 @@ const PrivacyPolicyPage: React.FC = () => {
               <h2 className="text-2xl font-bold text-gray-900 mb-4">5. DATA SECURITY</h2>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                <div className="bg-purple-50 rounded-lg p-4 text-center">
-                  <LockClosedIcon className="h-10 w-10 text-purple-600 mx-auto mb-2" />
+                <div className="bg-emerald-50 rounded-lg p-4 text-center">
+                  <LockClosedIcon className="h-10 w-10 text-emerald-600 mx-auto mb-2" />
                   <h4 className="font-semibold text-gray-800 mb-2">Encryption</h4>
                   <p className="text-sm text-gray-700">Passwords hashed with bcrypt, JWT tokens, HTTPS</p>
                 </div>
 
-                <div className="bg-indigo-50 rounded-lg p-4 text-center">
-                  <ShieldCheckIcon className="h-10 w-10 text-indigo-600 mx-auto mb-2" />
+                <div className="bg-teal-50 rounded-lg p-4 text-center">
+                  <ShieldCheckIcon className="h-10 w-10 text-teal-600 mx-auto mb-2" />
                   <h4 className="font-semibold text-gray-800 mb-2">Access Controls</h4>
                   <p className="text-sm text-gray-700">Role-based access, session management, rate limiting</p>
                 </div>
@@ -190,11 +211,11 @@ const PrivacyPolicyPage: React.FC = () => {
             <section className="mb-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">6. YOUR PRIVACY RIGHTS</h2>
               
-              <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
+              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-6 border-2 border-emerald-200">
                 <h3 className="text-xl font-semibold text-gray-800 mb-3">You Have The Right To:</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <p className="font-semibold text-purple-700 mb-2">✓ Access Rights</p>
+                    <p className="font-semibold text-emerald-700 mb-2">✓ Access Rights</p>
                     <ul className="text-sm text-gray-700 space-y-1 ml-4">
                       <li>• View your personal information</li>
                       <li>• Review all your detections</li>
@@ -202,7 +223,7 @@ const PrivacyPolicyPage: React.FC = () => {
                     </ul>
                   </div>
                   <div>
-                    <p className="font-semibold text-indigo-700 mb-2">✓ Control Rights</p>
+                    <p className="font-semibold text-teal-700 mb-2">✓ Control Rights</p>
                     <ul className="text-sm text-gray-700 space-y-1 ml-4">
                       <li>• Update your profile details</li>
                       <li>• Configure alert preferences</li>
@@ -210,7 +231,7 @@ const PrivacyPolicyPage: React.FC = () => {
                     </ul>
                   </div>
                   <div>
-                    <p className="font-semibold text-purple-700 mb-2">✓ Export Rights</p>
+                    <p className="font-semibold text-emerald-700 mb-2">✓ Export Rights</p>
                     <ul className="text-sm text-gray-700 space-y-1 ml-4">
                       <li>• Download detection data (PDF/Excel)</li>
                       <li>• Export detection reports</li>
@@ -218,7 +239,7 @@ const PrivacyPolicyPage: React.FC = () => {
                     </ul>
                   </div>
                   <div>
-                    <p className="font-semibold text-indigo-700 mb-2">✓ Deletion Rights</p>
+                    <p className="font-semibold text-teal-700 mb-2">✓ Deletion Rights</p>
                     <ul className="text-sm text-gray-700 space-y-1 ml-4">
                       <li>• Delete your account</li>
                       <li>• Remove specific detection records</li>
@@ -277,7 +298,7 @@ const PrivacyPolicyPage: React.FC = () => {
             {/* Section 10 */}
             <section className="mb-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">10. CONTACT US</h2>
-              <div className="bg-purple-50 rounded-lg p-6">
+              <div className="bg-emerald-50 rounded-lg p-6">
                 <p className="text-gray-700 mb-3 font-semibold">For questions about this Privacy Policy:</p>
                 <div className="space-y-2 text-gray-700">
                   <p><strong>General Inquiries:</strong> support@sads.com</p>
@@ -290,43 +311,43 @@ const PrivacyPolicyPage: React.FC = () => {
             </section>
 
             {/* Summary */}
-            <section className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border-2 border-purple-200">
+            <section className="bg-gradient-to-r from-emerald-50 to-teal-50 rounded-lg p-6 border-2 border-emerald-200">
               <h2 className="text-2xl font-bold text-gray-900 mb-4">📋 SUMMARY OF KEY POINTS</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                 <div className="flex items-start">
-                  <span className="text-purple-600 mr-2">✅</span>
+                  <span className="text-emerald-600 mr-2">✅</span>
                   <p className="text-gray-700"><strong>What We Collect:</strong> Name, email, phone, property details, detection data</p>
                 </div>
                 <div className="flex items-start">
-                  <span className="text-purple-600 mr-2">✅</span>
+                  <span className="text-emerald-600 mr-2">✅</span>
                   <p className="text-gray-700"><strong>How We Use It:</strong> Service delivery, alerts, reports, improvements</p>
                 </div>
                 <div className="flex items-start">
-                  <span className="text-purple-600 mr-2">✅</span>
+                  <span className="text-emerald-600 mr-2">✅</span>
                   <p className="text-gray-700"><strong>Who We Share With:</strong> Twilio (SMS/WhatsApp), Gmail (email), MongoDB (storage)</p>
                 </div>
                 <div className="flex items-start">
-                  <span className="text-purple-600 mr-2">✅</span>
+                  <span className="text-emerald-600 mr-2">✅</span>
                   <p className="text-gray-700"><strong>Your Rights:</strong> Access, update, export, delete your data</p>
                 </div>
                 <div className="flex items-start">
-                  <span className="text-purple-600 mr-2">✅</span>
+                  <span className="text-emerald-600 mr-2">✅</span>
                   <p className="text-gray-700"><strong>Security:</strong> Encrypted passwords, JWT tokens, role-based access</p>
                 </div>
                 <div className="flex items-start">
-                  <span className="text-purple-600 mr-2">✅</span>
+                  <span className="text-emerald-600 mr-2">✅</span>
                   <p className="text-gray-700"><strong>Contact:</strong> support@sads.com for questions</p>
                 </div>
               </div>
             </section>
 
             {/* Acknowledgment */}
-            <section className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-6 text-white mt-8">
+            <section className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg p-6 text-white mt-8">
               <h2 className="text-2xl font-bold mb-3">ACKNOWLEDGMENT</h2>
               <p className="leading-relaxed">
                 By clicking "I agree to the Terms of Service and Privacy Policy" during registration, you acknowledge that you have read, understood, and agree to this Privacy Policy.
               </p>
-              <p className="text-sm text-purple-100 mt-4">
+              <p className="text-sm text-emerald-100 mt-4">
                 <strong>Version 1.0</strong> | Effective Date: October 26, 2025
               </p>
             </section>
@@ -337,10 +358,13 @@ const PrivacyPolicyPage: React.FC = () => {
         <div className="mt-8 text-center">
           <Link
             to="/terms-of-service"
-            className="text-purple-600 hover:text-purple-700 font-semibold underline"
+                  className="text-white hover:text-emerald-300 font-semibold underline"
           >
             View Terms of Service →
           </Link>
+              </div>
+            </motion.div>
+          </div>
         </div>
       </div>
       
