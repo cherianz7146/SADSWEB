@@ -8,8 +8,8 @@ require('dotenv').config();
 const Device = require('./backend/models/device');
 
 const DEVICE_SERIAL = 'ESP32-CAM-001';
-const ESP32_IP = '10.63.77.44'; // Your actual ESP32 camera IP
-const OLD_IP = '10.190.173.44'; // Old IP to replace
+const ESP32_IP = '10.82.225.44'; // Static IP address (configured in ESP32 code)
+const OLD_IP = '10.63.77.44'; // Old IP to replace
 
 async function updateDevice() {
   try {

@@ -1,7 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import * as mobilenet from '@tensorflow-models/mobilenet';
-import * as tf from '@tensorflow/tfjs';
 import { 
   CameraIcon, 
   StopCircleIcon, 
@@ -25,13 +23,11 @@ interface Detection {
 const CameraDetectionPage: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [model, setModel] = useState<mobilenet.MobileNet | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [currentDetection, setCurrentDetection] = useState<Detection | null>(null);
   const [recentDetections, setRecentDetections] = useState<Detection[]>([]);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string>('');
-  const [modelLoading, setModelLoading] = useState(false);
   const [stats, setStats] = useState({
     totalDetections: 0,
     highConfidence: 0,
@@ -41,49 +37,56 @@ const CameraDetectionPage: React.FC = () => {
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastPostTimeRef = useRef<number>(0);
   
-  // YOLO verification state
+  // YOLO API state
   const [yoloAvailable, setYoloAvailable] = useState(false);
-  const [yoloVerifying, setYoloVerifying] = useState(false);
-  const [yoloResult, setYoloResult] = useState<any>(null);
-  const [showYoloModal, setShowYoloModal] = useState(false);
 
   // Check YOLO API availability
   useEffect(() => {
     const checkYolo = async () => {
       try {
+        console.log('🔍 Checking YOLO API health...');
         const response = await apiFetch<any>('/api/yolo/health');
-        setYoloAvailable(response.data.available);
-        console.log('YOLO API status:', response.data.available ? 'Available' : 'Unavailable');
-      } catch (err) {
+        console.log('📦 YOLO API health response:', response);
+        console.log('📦 Response data:', response.data);
+        
+        // Check if YOLO API is available
+        // Must have both available=true AND model_loaded=true for full functionality
+        // Handle both boolean true and string "true" cases
+        const available = response.data?.available;
+        const modelLoaded = response.data?.model_loaded;
+        
+        // Convert to boolean if needed (handle string "true" or boolean true)
+        const isAvailableBool = available === true || available === 'true' || available === 'True';
+        const isModelLoadedBool = modelLoaded === true || modelLoaded === 'true' || modelLoaded === 'True';
+        
+        const isAvailable = isAvailableBool && isModelLoadedBool;
+        
+        console.log('✅ YOLO API available:', isAvailable);
+        console.log('   - available:', available, '(type:', typeof available, ')');
+        console.log('   - model_loaded:', modelLoaded, '(type:', typeof modelLoaded, ')');
+        console.log('   - status:', response.data?.status);
+        
+        setYoloAvailable(isAvailable);
+        console.log('YOLO API status:', isAvailable ? '✅ Available' : '❌ Unavailable');
+        if (!isAvailable) {
+          console.warn('⚠️ YOLO API not available. Full response:', JSON.stringify(response.data, null, 2));
+        }
+      } catch (err: any) {
         setYoloAvailable(false);
-        console.log('YOLO API not available');
+        console.error('❌ YOLO API health check failed:', err);
+        console.error('   Error message:', err.message);
+        console.error('   Error response:', err.response?.data);
+        console.error('   Error stack:', err.stack);
       }
     };
+    // Check immediately
     checkYolo();
-  }, []);
-
-  // Load TensorFlow.js model
-  useEffect(() => {
-    const loadModel = async () => {
-      try {
-        setModelLoading(true);
-        console.log('Loading MobileNet model...');
-        await tf.ready();
-        const loadedModel = await mobilenet.load();
-        setModel(loadedModel);
-        console.log('Model loaded successfully!');
-      } catch (err) {
-        console.error('Failed to load model:', err);
-        setError('Failed to load detection model. Please refresh the page.');
-      } finally {
-        setModelLoading(false);
-      }
-    };
-
-    loadModel();
-
+    
+    // Check periodically (every 5 seconds for faster updates)
+    const interval = setInterval(checkYolo, 5000); // Check every 5 seconds
+    
     return () => {
-      // Cleanup
+      clearInterval(interval);
       if (detectionIntervalRef.current) {
         clearInterval(detectionIntervalRef.current);
       }
@@ -123,15 +126,20 @@ const CameraDetectionPage: React.FC = () => {
   };
 
   const startDetection = () => {
-    if (!model || !videoRef.current) {
-      setError('Model not loaded or camera not started');
+    if (!videoRef.current || !stream) {
+      setError('Camera not started');
+      return;
+    }
+
+    if (!yoloAvailable) {
+      setError('YOLO API is not available. Please ensure the YOLO service is running.');
       return;
     }
 
     setIsDetecting(true);
     setError('');
 
-    // Run detection every 2 seconds
+    // Run detection every 2 seconds (same as ESP32 camera)
     detectionIntervalRef.current = setInterval(async () => {
       await runDetection();
     }, 2000);
@@ -146,45 +154,131 @@ const CameraDetectionPage: React.FC = () => {
   };
 
   const runDetection = async () => {
-    if (!model || !videoRef.current || !canvasRef.current) return;
+    if (!videoRef.current || !canvasRef.current) return;
 
     try {
-      // Run prediction
-      const predictions = await model.classify(videoRef.current);
+      // Capture current frame from video
+      const canvas = document.createElement('canvas');
+      const video = videoRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        console.error('Could not get canvas context');
+        return;
+      }
       
-      if (predictions && predictions.length > 0) {
-        // Look for relevant animals in predictions
-        const animalPredictions = predictions.filter(p => 
-          p.className.toLowerCase().includes('elephant') ||
-          p.className.toLowerCase().includes('tiger') ||
-          p.className.toLowerCase().includes('leopard') ||
-          p.className.toLowerCase().includes('lion') ||
-          p.className.toLowerCase().includes('bear') ||
-          p.className.toLowerCase().includes('deer') ||
-          p.className.toLowerCase().includes('boar')
-        );
+      ctx.drawImage(video, 0, 0);
+      
+      // Convert to base64
+      const base64Image = canvas.toDataURL('image/jpeg', 0.8);
+      
+      console.log('🔍 Sending webcam frame to YOLO API for detection...');
+      
+      // Send to YOLO API via backend (same as ESP32 camera)
+      // Use lower confidence threshold (0.25 = 25%) for better detection
+      const response = await apiFetch<any>('/api/yolo/verify', {
+        method: 'POST',
+        body: {
+          image: base64Image,
+          confidence: 0.25  // Lowered to 0.25 for better detection accuracy
+        }
+      });
 
-        // Use highest confidence animal prediction, or top prediction if no animals found
-        const topPrediction = animalPredictions.length > 0 
-          ? animalPredictions[0] 
-          : predictions[0];
-
-        const detection: Detection = {
-          label: topPrediction.className,
-          confidence: topPrediction.probability,
+      // Process the response (same logic as ESP32 camera)
+      await processDetectionResponse(response);
+    } catch (err: any) {
+      console.error('❌ Detection error:', err);
+      console.error('Error details:', err.message, err.response?.data);
+      
+      // Check if it's a YOLO API error
+      if (err.response?.status === 503 || err.message?.includes('YOLO') || err.message?.includes('ECONNREFUSED')) {
+        console.error('⚠️ YOLO API is not available. Please ensure:');
+        console.error('   1. YOLO API service is running on http://localhost:5001');
+        console.error('   2. Check backend/.env for YOLO_API_URL setting');
+        console.error('   3. Start the YOLO service: cd ml && python yolo_api.py');
+        setYoloAvailable(false);
+        
+        // Show error state in UI
+        setCurrentDetection({
+          label: 'YOLO API Unavailable',
+          confidence: 0,
           timestamp: new Date().toISOString()
-        };
+        });
+      } else {
+        // For other errors, show analyzing state
+        setCurrentDetection({
+          label: 'Detection Error',
+          confidence: 0,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  };
 
-        setCurrentDetection(detection);
+  // Helper function to process detection response (same as ESP32 camera)
+  const processDetectionResponse = async (response: any) => {
+    console.log('📦 Processing detection response:', response.data);
+    
+    // Update YOLO availability status
+    setYoloAvailable(true);
 
-        // Draw on canvas
-        drawDetection(topPrediction.className, topPrediction.probability);
+    // Check for detections in various possible formats
+    let detections = [];
+    if (response.data.detections && Array.isArray(response.data.detections)) {
+      detections = response.data.detections;
+      console.log(`Found detections in 'detections' array: ${detections.length}`);
+    } else if (response.data.animal_detections && Array.isArray(response.data.animal_detections)) {
+      detections = response.data.animal_detections;
+      console.log(`Found detections in 'animal_detections' array: ${detections.length}`);
+    } else if (response.data.total_detections > 0 && response.data.detections) {
+      detections = Array.isArray(response.data.detections) ? response.data.detections : [];
+      console.log(`Found ${response.data.total_detections} total detections`);
+    }
 
-        // If confidence is high enough, post to backend and add to recent detections
-        if (topPrediction.probability >= 0.7) {
-          const now = Date.now();
-          // Only post once every 5 seconds to avoid spam
-          if (now - lastPostTimeRef.current > 5000) {
+    if (detections.length > 0) {
+      console.log(`✅ Found ${detections.length} detection(s)`);
+      
+      // Sort by confidence (highest first)
+      detections.sort((a: any, b: any) => {
+        const confA = typeof a.confidence === 'number' ? a.confidence : parseFloat(a.confidence || '0');
+        const confB = typeof b.confidence === 'number' ? b.confidence : parseFloat(b.confidence || '0');
+        return confB - confA;
+      });
+      
+      // Get the highest confidence detection
+      const topDetection = detections[0];
+      
+      // Handle confidence format (could be 0-100 or 0-1)
+      let confidenceValue = topDetection.confidence;
+      if (typeof confidenceValue === 'string') {
+        confidenceValue = parseFloat(confidenceValue);
+      }
+      // If confidence is > 1, it's a percentage (0-100), convert to decimal (0-1)
+      if (confidenceValue > 1) {
+        confidenceValue = confidenceValue / 100;
+      }
+      
+      const detection: Detection = {
+        label: topDetection.name || topDetection.label || 'Unknown',
+        confidence: confidenceValue,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log(`🎯 Detection: ${detection.label} (${(detection.confidence * 100).toFixed(1)}%)`);
+
+      // ALWAYS show detection result with confidence
+      setCurrentDetection(detection);
+      drawDetectionResult(detection.label, detection.confidence);
+
+      // If confidence is high enough (50% or more), save and notify
+      // Increased threshold to reduce false positives
+      if (detection.confidence >= 0.5) {
+        const now = Date.now();
+        // Only post once every 3 seconds to avoid spam
+        if (now - lastPostTimeRef.current > 3000) {
+          console.log('💾 Saving detection to database...');
+          try {
             await postDetection(detection);
             lastPostTimeRef.current = now;
             
@@ -192,25 +286,40 @@ const CameraDetectionPage: React.FC = () => {
             setRecentDetections(prev => [detection, ...prev.slice(0, 9)]);
             
             // Update stats
+            const labelLower = detection.label.toLowerCase();
             setStats(prev => ({
               totalDetections: prev.totalDetections + 1,
-              highConfidence: topPrediction.probability >= 0.85 ? prev.highConfidence + 1 : prev.highConfidence,
-              elephantCount: topPrediction.className.toLowerCase().includes('elephant') 
+              highConfidence: detection.confidence >= 0.85 ? prev.highConfidence + 1 : prev.highConfidence,
+              elephantCount: labelLower.includes('elephant') 
                 ? prev.elephantCount + 1 
                 : prev.elephantCount,
-              tigerCount: topPrediction.className.toLowerCase().includes('tiger') 
+              tigerCount: labelLower.includes('tiger') || labelLower.includes('cat')
                 ? prev.tigerCount + 1 
                 : prev.tigerCount
             }));
+            
+            console.log('✅ Detection saved and stats updated');
+          } catch (postError) {
+            console.error('❌ Failed to save detection:', postError);
           }
         }
+      } else {
+        console.log(`⚠️ Detection confidence too low to save: ${(detection.confidence * 100).toFixed(1)}% (minimum: 30%)`);
       }
-    } catch (err) {
-      console.error('Detection error:', err);
+    } else {
+      console.log('❌ No detections found in response');
+      // Show "No detection" state
+      const noDetection: Detection = {
+        label: 'No detection',
+        confidence: 0,
+        timestamp: new Date().toISOString()
+      };
+      setCurrentDetection(noDetection);
+      drawDetectionResult(noDetection.label, noDetection.confidence);
     }
   };
 
-  const drawDetection = (label: string, confidence: number) => {
+  const drawDetectionResult = (label: string, confidence: number) => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
     
@@ -223,34 +332,59 @@ const CameraDetectionPage: React.FC = () => {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    // Clear canvas
+    // Clear previous drawings
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw label and confidence
-    const text = `${label} (${(confidence * 100).toFixed(1)}%)`;
+    // Skip drawing if confidence is 0 and label indicates no detection/error
+    if (confidence === 0 && (label === 'No detection' || label === 'Analyzing...' || label.includes('Error') || label.includes('Unavailable'))) {
+      return;
+    }
+
     const isAnimal = label.toLowerCase().includes('elephant') || 
                     label.toLowerCase().includes('tiger') ||
-                    label.toLowerCase().includes('leopard');
+                    label.toLowerCase().includes('leopard') ||
+                    label.toLowerCase().includes('deer') ||
+                    label.toLowerCase().includes('boar');
     
-    ctx.fillStyle = isAnimal && confidence >= 0.7 ? 'rgba(239, 68, 68, 0.8)' : 'rgba(59, 130, 246, 0.8)';
-    ctx.font = 'bold 24px Arial';
+    // Draw detection overlay in bottom-left corner (same style as ESP32 camera)
+    const padding = 15;
+    const overlayX = padding;
+    const overlayY = canvas.height - 120;
+    const overlayWidth = 300;
+    const overlayHeight = 100;
     
-    const textWidth = ctx.measureText(text).width;
-    ctx.fillRect(10, 10, textWidth + 20, 40);
+    // Background
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(overlayX, overlayY, overlayWidth, overlayHeight);
     
+    // Label
     ctx.fillStyle = 'white';
-    ctx.fillText(text, 20, 38);
-
-    // Draw confidence bar
-    const barWidth = canvas.width - 40;
-    const barHeight = 10;
-    const barY = canvas.height - 30;
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText(label, overlayX + 10, overlayY + 30);
     
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(20, barY, barWidth, barHeight);
+    // Confidence percentage
+    ctx.font = '16px Arial';
+    ctx.fillText(`${(confidence * 100).toFixed(1)}%`, overlayX + 10, overlayY + 55);
     
-    ctx.fillStyle = confidence >= 0.7 ? '#10b981' : '#3b82f6';
-    ctx.fillRect(20, barY, barWidth * confidence, barHeight);
+    // Confidence bar
+    const barWidth = overlayWidth - 20;
+    const barHeight = 8;
+    const barX = overlayX + 10;
+    const barY = overlayY + 70;
+    
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+    
+    // Confidence fill
+    let barColor = '#3b82f6'; // Blue for low
+    if (confidence >= 0.85) {
+      barColor = '#10b981'; // Green for high
+    } else if (confidence >= 0.70) {
+      barColor = '#f59e0b'; // Yellow for medium
+    }
+    
+    ctx.fillStyle = barColor;
+    ctx.fillRect(barX, barY, barWidth * confidence, barHeight);
   };
 
   const postDetection = async (detection: Detection) => {
@@ -283,65 +417,6 @@ const CameraDetectionPage: React.FC = () => {
     }
   };
 
-  const verifyWithYOLO = async () => {
-    if (!videoRef.current || !canvasRef.current) {
-      setError('Camera not started');
-      return;
-    }
-
-    setYoloVerifying(true);
-    setYoloResult(null);
-    
-    try {
-      // Capture current frame
-      const canvas = document.createElement('canvas');
-      const video = videoRef.current;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Could not get canvas context');
-      
-      ctx.drawImage(video, 0, 0);
-      
-      // Convert to base64
-      const base64Image = canvas.toDataURL('image/jpeg');
-      
-      console.log('Sending frame to YOLO API for verification...');
-      
-      // Send to YOLO API via backend
-      const response = await apiFetch<any>('/api/yolo/verify', {
-        method: 'POST',
-        body: {
-          image: base64Image,
-          confidence: 0.5
-        }
-      });
-
-      if (response.data.success) {
-        setYoloResult(response.data);
-        setShowYoloModal(true);
-        console.log('YOLO verification complete:', response.data);
-        
-        // Update stats with YOLO results
-        if (response.data.elephant_count > 0 || response.data.tiger_count > 0) {
-          setStats(prev => ({
-            ...prev,
-            elephantCount: prev.elephantCount + response.data.elephant_count,
-            tigerCount: prev.tigerCount + response.data.tiger_count,
-            totalDetections: prev.totalDetections + 1,
-            highConfidence: prev.highConfidence + 1
-          }));
-        }
-      } else {
-        setError('YOLO verification failed: ' + response.data.message);
-      }
-    } catch (err: any) {
-      console.error('YOLO verification error:', err);
-      setError('YOLO verification failed. Make sure YOLO API is running.');
-    } finally {
-      setYoloVerifying(false);
-    }
-  };
 
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.85) return 'text-green-600 bg-green-100';
@@ -435,9 +510,25 @@ const CameraDetectionPage: React.FC = () => {
         </div>
       )}
 
-      {modelLoading && (
-        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700">
-          Loading AI model... Please wait.
+      {!yoloAvailable && (
+        <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700">
+          <div className="flex items-start gap-3">
+            <ExclamationTriangleIcon className="h-5 w-5 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-semibold mb-1">YOLO API Not Available</p>
+              <p className="text-sm mb-2">The YOLO detection service is not running. Please start it to enable camera detection.</p>
+              <div className="bg-yellow-100 p-3 rounded border border-yellow-300">
+                <p className="text-xs font-mono text-yellow-900 mb-1">To start the YOLO API:</p>
+                <ol className="text-xs text-yellow-900 list-decimal list-inside space-y-1">
+                  <li>Open a terminal/command prompt</li>
+                  <li>Navigate to the project directory: <code className="bg-yellow-200 px-1 rounded">cd D:\SADS2</code></li>
+                  <li>Start the service: <code className="bg-yellow-200 px-1 rounded">cd ml && python yolo_api.py</code></li>
+                  <li>Wait for "Starting SADS YOLO API on port 5001" message</li>
+                  <li>Refresh this page</li>
+                </ol>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -472,17 +563,23 @@ const CameraDetectionPage: React.FC = () => {
                   </div>
                 )}
 
+                {/* Detection overlay (same as ESP32 camera) */}
                 {currentDetection && isDetecting && (
-                  <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-75 text-white p-4 rounded-lg">
-                    <div className="flex items-center justify-between">
+                  <div className="absolute top-2 right-2 bg-black bg-opacity-80 text-white px-3 py-2 rounded-lg z-20 border-2 shadow-lg">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${
+                        currentDetection.confidence >= 0.85 ? 'bg-green-500' :
+                        currentDetection.confidence >= 0.70 ? 'bg-yellow-500' :
+                        currentDetection.confidence >= 0.50 ? 'bg-orange-500' :
+                        'bg-red-500'
+                      }`} />
                       <div>
-                        <p className="font-semibold">{currentDetection.label}</p>
-                        <p className="text-sm opacity-75">
-                          Confidence: {(currentDetection.confidence * 100).toFixed(1)}%
+                        <p className="text-xs font-semibold">{currentDetection.label}</p>
+                        <p className="text-xs opacity-75">
+                          {currentDetection.confidence >= 0.85 ? 'High' : 
+                           currentDetection.confidence >= 0.70 ? 'Medium' : 
+                           currentDetection.confidence >= 0.50 ? 'Low' : 'Very Low'} Confidence
                         </p>
-                      </div>
-                      <div className={`px-3 py-1 rounded-full text-sm font-semibold ${getConfidenceColor(currentDetection.confidence)}`}>
-                        {currentDetection.confidence >= 0.85 ? 'High' : currentDetection.confidence >= 0.70 ? 'Medium' : 'Low'}
                       </div>
                     </div>
                   </div>
@@ -493,7 +590,6 @@ const CameraDetectionPage: React.FC = () => {
                 {!stream ? (
                   <button
                     onClick={startCamera}
-                    disabled={modelLoading}
                     className="flex-1 px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50"
                   >
                     <CameraIcon className="h-5 w-5" />
@@ -504,7 +600,8 @@ const CameraDetectionPage: React.FC = () => {
                     {!isDetecting ? (
                       <button
                         onClick={startDetection}
-                        className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
+                        disabled={!yoloAvailable}
+                        className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <PlayCircleIcon className="h-5 w-5" />
                         Start Detection
@@ -575,10 +672,11 @@ const CameraDetectionPage: React.FC = () => {
           <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <h3 className="font-semibold text-blue-900 mb-2">How it works:</h3>
             <ul className="text-sm text-blue-800 space-y-1">
-              <li>• AI analyzes camera feed every 2 seconds</li>
-              <li>• Detections ≥70% confidence are saved</li>
+              <li>• YOLO AI analyzes camera feed every 2 seconds</li>
+              <li>• Detections ≥25% confidence are saved</li>
+              <li>• Same detection system as ESP32 cameras</li>
               <li>• Notifications sent to managers</li>
-              <li>• Auto-cooldown: 5 seconds between posts</li>
+              <li>• Auto-cooldown: 3 seconds between posts</li>
             </ul>
           </div>
         </div>

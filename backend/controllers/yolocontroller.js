@@ -55,19 +55,30 @@ exports.verifyWithYolo = async (req, res) => {
     }
 
     console.log('Forwarding image to YOLO API for verification...');
+    console.log(`   YOLO API URL: ${YOLO_API_URL}/detect/base64`);
 
     // Send to YOLO API
-    const response = await axios.post(
-      `${YOLO_API_URL}/detect/base64`,
-      {
-        image,
-        conf: confidence || 0.5
-      },
-      {
-        timeout: 30000,
-        headers: { 'Content-Type': 'application/json' }
+    // Use lower default confidence (0.25 = 25%) for better detection
+    let response;
+    try {
+      response = await axios.post(
+        `${YOLO_API_URL}/detect/base64`,
+        {
+          image,
+          conf: confidence || 0.25  // Lowered to 0.25 for better detection accuracy
+        },
+        {
+          timeout: 30000,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    } catch (axiosError) {
+      // Re-throw with better error info for the outer catch block
+      if (axiosError.code === 'ECONNREFUSED' || axiosError.code === 'ETIMEDOUT') {
+        throw new Error('YOLO API connection refused or timed out');
       }
-    );
+      throw axiosError;
+    }
 
     const yoloResult = response.data;
 
@@ -91,11 +102,17 @@ exports.verifyWithYolo = async (req, res) => {
       console.log(`Found ${animalDetections.length} animal detection(s) out of ${yoloResult.detections.length} total`);
 
       for (const detection of animalDetections) {
-        const confidence = typeof detection.confidence === 'number' 
+        let confidence = typeof detection.confidence === 'number' 
           ? detection.confidence 
           : parseFloat(detection.confidence) || 0;
         
-        // Save all detections with confidence >= 30% (lower threshold for better detection)
+        // Handle confidence format: could be 0-100 (percentage) or 0-1 (decimal)
+        // Convert to percentage if it's decimal
+        if (confidence <= 1) {
+          confidence = confidence * 100;
+        }
+        
+        // Save all detections with confidence >= 30% (lowered for classification model)
         if (confidence >= 30) {
           const newDetection = await Detection.create({
             userId: req.user.id,
@@ -181,6 +198,25 @@ exports.verifyWithYolo = async (req, res) => {
 
   } catch (error) {
     console.error('YOLO verification error:', error);
+    
+    // Check if it's a connection error (YOLO API not running)
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.message?.includes('ECONNREFUSED')) {
+      return res.status(503).json({
+        success: false,
+        message: 'YOLO API is not available. Please start the YOLO service.',
+        error: 'YOLO API connection refused',
+        yolo_available: false,
+        instructions: [
+          '1. Open a terminal/command prompt',
+          '2. Navigate to the project directory: cd D:\\SADS2',
+          '3. Start the service: cd ml && python yolo_api.py',
+          '4. Wait for "Starting SADS YOLO API on port 5001" message',
+          '5. Refresh this page'
+        ]
+      });
+    }
+    
+    // Other errors
     res.status(500).json({
       success: false,
       message: 'Failed to verify with YOLO API',
@@ -321,24 +357,62 @@ exports.detectFromDevice = async (req, res) => {
       });
     }
 
-    console.log(`Device ${device.serialNumber} sending image for detection...`);
+    console.log(`📸 Device ${device.serialNumber} sending image for detection...`);
+    console.log(`   Image data length: ${image ? image.length : 0} characters`);
+    console.log(`   Confidence threshold: ${confidence || 0.5}`);
+    console.log(`   YOLO API URL: ${YOLO_API_URL}/detect/base64`);
 
-    // Send to YOLO API
-    const response = await axios.post(
-      `${YOLO_API_URL}/detect/base64`,
-      {
-        image,
-        conf: confidence || 0.5
-      },
-      {
-        timeout: 30000,
-        headers: { 'Content-Type': 'application/json' }
+    // Send to YOLO API with retry logic (handles YOLO API startup delay)
+    let response;
+    let retries = 3;
+    let lastError;
+    
+    while (retries > 0) {
+      try {
+        response = await axios.post(
+          `${YOLO_API_URL}/detect/base64`,
+          {
+            image,
+            conf: confidence || 0.5
+          },
+          {
+            timeout: 30000,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+        break; // Success, exit retry loop
+      } catch (error) {
+        lastError = error;
+        if (error.code === 'ECONNREFUSED' && retries > 1) {
+          // YOLO API not ready yet, wait and retry
+          console.log(`⚠️  YOLO API not ready, retrying in 2 seconds... (${retries - 1} attempts left)`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          retries--;
+        } else {
+          // Other error or out of retries
+          throw error;
+        }
       }
-    );
+    }
+    
+    if (!response) {
+      throw lastError || new Error('Failed to connect to YOLO API after retries');
+    }
 
     const yoloResult = response.data;
 
+    console.log(`✅ YOLO API Response received:`);
+    console.log(`   Success: ${yoloResult.success}`);
+    console.log(`   Total detections: ${yoloResult.total_detections || 0}`);
+    console.log(`   Detections array length: ${yoloResult.detections?.length || 0}`);
+    if (yoloResult.detections && yoloResult.detections.length > 0) {
+      console.log(`   First detection: ${yoloResult.detections[0].name} (${yoloResult.detections[0].confidence}%)`);
+    } else {
+      console.log(`   ⚠️ No detections found by YOLO`);
+    }
+
     if (!yoloResult.success) {
+      console.error(`❌ YOLO detection failed: ${yoloResult.error}`);
       return res.status(500).json({
         success: false,
         message: 'YOLO detection failed',
@@ -361,11 +435,12 @@ exports.detectFromDevice = async (req, res) => {
         const animalName = detection.name.toLowerCase();
         const isThreat = threatAnimals.some(threat => animalName.includes(threat));
         
-        if (isThreat && detection.confidence >= 50) {
+        // Increased threshold to 65% to reduce false positives (52-54% is too low)
+        if (isThreat && detection.confidence >= 65) {
           threatDetected = true;
           if (detection.confidence >= 80) {
             threatLevel = 'critical';
-          } else if (detection.confidence >= 60) {
+          } else if (detection.confidence >= 70) {
             threatLevel = 'high';
           } else {
             threatLevel = 'medium';
@@ -383,7 +458,8 @@ exports.detectFromDevice = async (req, res) => {
           propertyId: property._id,
           label: detection.name,
           confidence: detection.confidence,
-          source: `esp32-${device.serialNumber}`,
+          probability: detection.confidence / 100, // Convert percentage to 0-1 range
+          source: 'esp32', // Use enum value instead of full string
           detectedAt: new Date(),
           metadata: {
             bbox: detection.bbox,
@@ -465,6 +541,233 @@ exports.detectFromDevice = async (req, res) => {
       message: 'Failed to process device detection',
       error: error.message,
       yolo_available: false
+    });
+  }
+};
+
+/**
+ * Detect from stream URL (proxy method to avoid CORS issues)
+ * Fetches the image server-side and sends to YOLO
+ */
+exports.detectFromStreamUrl = async (req, res) => {
+  try {
+    if (!YOLO_ENABLED) {
+      return res.status(503).json({
+        success: false,
+        message: 'YOLO verification is disabled'
+      });
+    }
+
+    const { streamUrl, confidence } = req.body;
+
+    if (!streamUrl) {
+      return res.status(400).json({
+        success: false,
+        message: 'Stream URL is required'
+      });
+    }
+
+    console.log(`Fetching image from stream URL: ${streamUrl}`);
+
+    // For MJPEG streams, we need to read the stream and extract a single frame
+    // MJPEG streams send frames continuously, so we read the first complete frame
+    let imageBuffer;
+    let contentType = 'image/jpeg';
+
+    try {
+      // Fetch the stream with stream response type
+      // Use longer timeout and retry logic for ESP32 streams
+      const streamResponse = await axios.get(streamUrl, {
+        responseType: 'stream',
+        timeout: 20000, // Increased timeout for ESP32
+        headers: {
+          'Accept': 'multipart/x-mixed-replace, image/jpeg, image/*',
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache'
+        },
+        httpAgent: new (require('http').Agent)({ 
+          keepAlive: true, 
+          keepAliveMsecs: 30000,
+          timeout: 20000,
+          family: 4 // Force IPv4
+        }),
+        httpsAgent: new (require('https').Agent)({ 
+          keepAlive: true, 
+          keepAliveMsecs: 30000,
+          timeout: 20000,
+          family: 4 // Force IPv4
+        })
+      });
+
+      // Read the first frame from MJPEG stream
+      // MJPEG format: --boundary\r\nContent-Type: image/jpeg\r\nContent-Length: <size>\r\n\r\n<image data>--boundary
+      imageBuffer = await new Promise((resolve, reject) => {
+        const chunks = [];
+        let headerEndIndex = -1;
+        let contentLength = null;
+        let totalBytes = 0;
+        let frameDataStart = -1;
+
+        const timeout = setTimeout(() => {
+          streamResponse.data.destroy();
+          reject(new Error('Timeout waiting for image frame from stream'));
+        }, 10000);
+
+        streamResponse.data.on('data', (chunk) => {
+          chunks.push(chunk);
+          totalBytes += chunk.length;
+
+          // Try to find the header end and content length
+          if (headerEndIndex === -1) {
+            const allData = Buffer.concat(chunks).toString('binary');
+            
+            // Find Content-Length header
+            if (!contentLength) {
+              const lengthMatch = allData.match(/Content-Length:\s*(\d+)/i);
+              if (lengthMatch) {
+                contentLength = parseInt(lengthMatch[1], 10);
+              }
+            }
+
+            // Find where image data starts (after \r\n\r\n)
+            if (allData.includes('\r\n\r\n')) {
+              headerEndIndex = allData.indexOf('\r\n\r\n');
+              frameDataStart = headerEndIndex + 4;
+            }
+          }
+
+          // If we have the header info and enough data, extract the frame
+          if (contentLength && frameDataStart >= 0) {
+            const allData = Buffer.concat(chunks);
+            const imageData = allData.slice(frameDataStart, frameDataStart + contentLength);
+            
+            if (imageData.length >= contentLength) {
+              clearTimeout(timeout);
+              streamResponse.data.destroy();
+              resolve(imageData);
+            }
+          }
+        });
+
+        streamResponse.data.on('error', (error) => {
+          clearTimeout(timeout);
+          console.error('Stream read error:', error);
+          reject(error);
+        });
+
+        streamResponse.data.on('end', () => {
+          clearTimeout(timeout);
+          // If we couldn't parse properly, try to use the data we have
+          if (chunks.length > 0) {
+            const allData = Buffer.concat(chunks);
+            // Try to find JPEG start marker (FF D8)
+            const jpegStart = allData.indexOf(Buffer.from([0xFF, 0xD8]));
+            if (jpegStart >= 0) {
+              // Find JPEG end marker (FF D9)
+              const jpegEnd = allData.indexOf(Buffer.from([0xFF, 0xD9]), jpegStart);
+              if (jpegEnd >= 0) {
+                resolve(allData.slice(jpegStart, jpegEnd + 2));
+              } else {
+                resolve(allData.slice(jpegStart));
+              }
+            } else {
+              resolve(allData);
+            }
+          } else {
+            reject(new Error('No image data received from stream'));
+          }
+        });
+      });
+
+      console.log(`Image frame extracted (${imageBuffer.length} bytes), forwarding to YOLO API...`);
+
+      // Validate image buffer
+      if (!imageBuffer || imageBuffer.length === 0) {
+        throw new Error('Empty image buffer received from stream');
+      }
+
+      // Check for valid JPEG markers
+      const jpegStart = imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8;
+      const jpegEnd = imageBuffer[imageBuffer.length - 2] === 0xFF && imageBuffer[imageBuffer.length - 1] === 0xD9;
+      
+      if (!jpegStart) {
+        console.warn('⚠️ Image buffer does not start with JPEG marker (FF D8)');
+      }
+      if (!jpegEnd) {
+        console.warn('⚠️ Image buffer does not end with JPEG marker (FF D9)');
+      }
+
+    } catch (streamError) {
+      console.error('Error fetching MJPEG stream:', streamError.message);
+      throw new Error(`Failed to fetch image from stream: ${streamError.message}`);
+    }
+
+    // Convert to base64
+    const base64Image = `data:${contentType};base64,${imageBuffer.toString('base64')}`;
+
+    console.log(`Image converted to base64 (${base64Image.length} chars), sending to YOLO API...`);
+
+    // Send to YOLO API with the provided confidence threshold
+    // Use lower default (0.25) for better detection with ESP32 image quality
+    const confThreshold = confidence || 0.25;  // 25% threshold for better detection
+    console.log(`Sending to YOLO API with confidence threshold: ${confThreshold}`);
+    
+    const yoloResponse = await axios.post(
+      `${YOLO_API_URL}/detect/base64`,
+      {
+        image: base64Image,
+        conf: confThreshold
+      },
+      {
+        timeout: 30000,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+
+    const yoloResult = yoloResponse.data;
+
+    if (!yoloResult.success) {
+      console.error('❌ YOLO detection failed:', yoloResult.error);
+      return res.status(500).json({
+        success: false,
+        message: 'YOLO detection failed',
+        error: yoloResult.error
+      });
+    }
+
+    // Log detection results for debugging
+    console.log(`✅ YOLO detection successful:`);
+    console.log(`   Total detections: ${yoloResult.total_detections || 0}`);
+    console.log(`   Detections array length: ${yoloResult.detections?.length || 0}`);
+    console.log(`   Animal detections: ${yoloResult.animal_detections?.length || 0}`);
+    if (yoloResult.detections && yoloResult.detections.length > 0) {
+      const firstDet = yoloResult.detections[0];
+      console.log(`   First detection: ${firstDet.name} (${firstDet.confidence}%)`);
+    }
+
+    // Return the detection results - same format as verifyWithYolo for consistency
+    res.json({
+      success: true,
+      source: 'stream-url-proxy',
+      ...yoloResult  // Include all YOLO result fields (detections, total_detections, animal_detections, etc.)
+    });
+
+  } catch (error) {
+    console.error('Stream URL detection error:', error);
+    
+    // Check if it's a YOLO API connection error
+    if (error.code === 'ECONNREFUSED' || error.message.includes('connect')) {
+      return res.status(503).json({
+        success: false,
+        message: 'YOLO API is not available',
+        error: 'Connection refused. Please ensure YOLO API is running on ' + (process.env.YOLO_API_URL || 'http://localhost:5001')
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process stream detection',
+      error: error.message
     });
   }
 };

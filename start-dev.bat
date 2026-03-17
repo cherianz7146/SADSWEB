@@ -8,6 +8,13 @@ echo  Starting SADS Development Servers
 echo ========================================
 echo.
 
+REM Start YOLO API in new window (Required for detection)
+echo Starting YOLO API Service...
+start "SADS YOLO API (Port 5001)" cmd /k "cd /d %~dp0ml && python yolo_api.py"
+
+REM Wait 3 seconds
+timeout /t 3 /nobreak > nul
+
 REM Start Backend in new window
 echo Starting Backend Server...
 start "SADS Backend (Port 5000)" cmd /k "cd /d %~dp0backend && npm run dev"
@@ -24,6 +31,7 @@ echo ========================================
 echo  Servers are starting!
 echo ========================================
 echo.
+echo YOLO API: http://localhost:5001 (REQUIRED for detection)
 echo Backend:  http://localhost:5000
 echo Frontend: http://localhost:5173
 echo.

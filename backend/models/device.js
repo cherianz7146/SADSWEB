@@ -29,9 +29,9 @@ const deviceSchema = new mongoose.Schema({
   },
   signalStrength: {
     type: Number,
-    min: 0,
-    max: 100,
-    default: 100
+    min: -100,  // WiFi RSSI is negative (dBm), typically -30 to -100
+    max: 0,     // 0 is perfect signal, negative values are normal
+    default: -50  // Default to moderate signal strength
   },
   location: {
     latitude: { type: Number },

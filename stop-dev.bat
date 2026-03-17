@@ -8,6 +8,15 @@ echo  Stopping SADS Development Servers
 echo ========================================
 echo.
 
+REM Kill processes on port 5001 (YOLO API)
+echo Stopping YOLO API (port 5001)...
+for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5001 ^| findstr LISTENING') do (
+    taskkill /F /PID %%a >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo ✓ YOLO API stopped
+    )
+)
+
 REM Kill processes on port 5000 (Backend)
 echo Stopping Backend (port 5000)...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr :5000 ^| findstr LISTENING') do (

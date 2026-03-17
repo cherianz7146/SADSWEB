@@ -10,7 +10,8 @@ const { errorHandler } = require('./middleware/errorhandler');
 const app = express();
 
 // Trust proxy for accurate IP detection (important for device heartbeat)
-app.set('trust proxy', true);
+// Set to 1 to trust only the first proxy (more secure than true)
+app.set('trust proxy', 1);
 
 // Basic security headers
 app.use(helmet());
@@ -46,6 +47,14 @@ const authLimiter = rateLimit({
   message: 'Too many login attempts, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Use custom key generator that combines IP with user agent for better security
+  keyGenerator: (req) => {
+    // Use IP from trusted proxy, fallback to connection remote address
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    // Combine with user agent to make it harder to bypass
+    const userAgent = req.get('user-agent') || 'unknown';
+    return `${ip}-${userAgent.substring(0, 50)}`;
+  },
   skip: (req) => {
     // Skip rate limiting for health checks
     return req.path === '/api/health';
@@ -59,6 +68,14 @@ const apiLimiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  // Use custom key generator that combines IP with user agent for better security
+  keyGenerator: (req) => {
+    // Use IP from trusted proxy, fallback to connection remote address
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    // Combine with user agent to make it harder to bypass
+    const userAgent = req.get('user-agent') || 'unknown';
+    return `${ip}-${userAgent.substring(0, 50)}`;
+  },
   skip: (req) => {
     // Skip rate limiting for health checks and auth routes (they have their own limiter)
     return req.path === '/api/health' || req.path.startsWith('/api/auth');
@@ -134,6 +151,7 @@ app.use('/api/stats', require('./routes/stats'));
 app.use('/api/plantations', require('./routes/plantation'));
 app.use('/api/password', require('./routes/password'));
 app.use('/api/yolo', require('./routes/yolo'));
+app.use('/api/stream', require('./routes/stream'));
 app.use('/api/devices', require('./routes/deviceRoutes'));
 app.use('/api/manager-profiles', require('./routes/managerProfile'));
 
@@ -145,12 +163,28 @@ app.use((req, res) => {
 // Error handler
 app.use(errorHandler);
 
+// Initialize YOLO API service (auto-start if enabled)
+const { initializeYoloService, startHealthCheck } = require('./services/yoloService');
+
 // Export app for testing
 if (require.main !== module) {
   module.exports = app;
 } else {
   // Start server only if run directly
-  app.listen(port, () => {
-    console.log(`Server listening on port ${port}`);
+  app.listen(port, async () => {
+    console.log(`✅ Server listening on port ${port}`);
+    console.log(`🚀 Auto-starting YOLO API service...`);
+    
+    // Initialize YOLO API service after server starts
+    // Small delay to ensure server is fully ready
+    setTimeout(async () => {
+      try {
+        await initializeYoloService();
+        startHealthCheck(); // Start periodic health checks
+        console.log(`✅ YOLO API auto-start initialization complete`);
+      } catch (error) {
+        console.error(`❌ Failed to initialize YOLO API auto-start:`, error);
+      }
+    }, 2000); // Wait 2 seconds for server to fully start
   });
 }

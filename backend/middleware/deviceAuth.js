@@ -18,13 +18,37 @@ const deviceAuth = async (req, res, next) => {
     }
 
     // Find device by serial number
-    const device = await Device.findOne({ serialNumber });
+    let device = await Device.findOne({ serialNumber });
 
     if (!device) {
-      return res.status(404).json({ 
-        message: 'Device not found',
-        error: `Device with serial number ${serialNumber} is not registered`
+      // Auto-register device if it doesn't exist (same logic as heartbeat)
+      console.log(`📦 Auto-registering device from detection request: ${serialNumber}`);
+      const Property = require('../models/property');
+      let defaultProperty = await Property.findOne().sort({ createdAt: 1 });
+      
+      if (!defaultProperty) {
+        defaultProperty = await Property.create({
+          name: 'Default Property',
+          address: 'Auto-created for device registration',
+          status: 'active'
+        });
+      }
+
+      const deviceType = serialNumber.toLowerCase().includes('esp32') || serialNumber.toLowerCase().includes('cam') 
+        ? 'camera' 
+        : 'camera';
+
+      device = await Device.create({
+        serialNumber,
+        type: deviceType,
+        assignedProperty: defaultProperty._id,
+        status: 'online',
+        batteryLevel: 100,
+        signalStrength: -50, // Default moderate signal
+        lastPing: new Date()
       });
+
+      console.log(`✅ Auto-registered device: ${serialNumber} (${deviceType})`);
     }
 
     // Check if device is active
@@ -48,6 +72,7 @@ const deviceAuth = async (req, res, next) => {
 };
 
 module.exports = deviceAuth;
+
 
 
 

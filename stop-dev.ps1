@@ -8,6 +8,23 @@ Write-Host ""
 
 $stopped = $false
 
+# Stop YOLO API (port 5001)
+Write-Host "🔍 Checking YOLO API (port 5001)..." -ForegroundColor Yellow
+$yolo = Get-NetTCPConnection -LocalPort 5001 -ErrorAction SilentlyContinue
+if ($yolo) {
+    try {
+        Stop-Process -Id $yolo.OwningProcess -Force -ErrorAction Stop
+        Write-Host "✅ YOLO API stopped (port 5001)" -ForegroundColor Green
+        $stopped = $true
+    } catch {
+        Write-Host "❌ Failed to stop YOLO API: $_" -ForegroundColor Red
+    }
+} else {
+    Write-Host "⚠️  YOLO API not running (port 5001)" -ForegroundColor Gray
+}
+
+Write-Host ""
+
 # Stop Backend (port 5000)
 Write-Host "🔍 Checking Backend (port 5000)..." -ForegroundColor Yellow
 $backend = Get-NetTCPConnection -LocalPort 5000 -ErrorAction SilentlyContinue

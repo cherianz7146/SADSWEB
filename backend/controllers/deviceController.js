@@ -51,16 +51,60 @@ const getPropertyDevices = asyncHandler(async (req, res) => {
 // @route   POST /api/devices/heartbeat
 // @access  Public (Device API Key in future, currently open for MVP)
 const updateHeartbeat = asyncHandler(async (req, res) => {
-    const { serialNumber, batteryLevel, signalStrength, ipAddress } = req.body;
+    const { serialNumber, batteryLevel, signalStrength, ipAddress, type } = req.body;
 
     if (!serialNumber) {
         return res.status(400).json({ message: 'Serial number required' });
     }
 
-    const device = await Device.findOne({ serialNumber });
+    let device = await Device.findOne({ serialNumber });
 
+    // Auto-register device if it doesn't exist
     if (!device) {
-        return res.status(404).json({ message: 'Device not found' });
+        console.log(`📦 Auto-registering new device: ${serialNumber}`);
+        
+        // Find a default property (first property in database, or create a default one)
+        let defaultProperty = await Property.findOne().sort({ createdAt: 1 });
+        
+        if (!defaultProperty) {
+            // Create a default property if none exists
+            defaultProperty = await Property.create({
+                name: 'Default Property',
+                address: 'Auto-created for device registration',
+                status: 'active'
+            });
+            console.log('✅ Created default property for device registration');
+        }
+
+        // Determine device type from serial number or request
+        let deviceType = type || 'camera';
+        if (serialNumber.toLowerCase().includes('esp32') || serialNumber.toLowerCase().includes('cam')) {
+            deviceType = 'camera';
+        }
+
+        // Extract IP address from request if not provided in body
+        const deviceIp = ipAddress || req.ip || req.connection.remoteAddress || req.socket.remoteAddress;
+        const cleanIp = deviceIp ? deviceIp.replace(/^::ffff:/, '') : null;
+
+        // Create device with metadata
+        // signalStrength: Use provided value or default to -50 (moderate signal)
+        // WiFi RSSI is negative: -30 (excellent) to -100 (poor)
+        const defaultSignalStrength = -50;
+        device = await Device.create({
+            serialNumber,
+            type: deviceType,
+            assignedProperty: defaultProperty._id,
+            status: 'online',
+            batteryLevel: batteryLevel || 100,
+            signalStrength: signalStrength !== undefined ? signalStrength : defaultSignalStrength,
+            lastPing: Date.now(),
+            metadata: cleanIp && cleanIp !== '127.0.0.1' && cleanIp !== '::1' ? {
+                ipAddress: cleanIp,
+                streamUrl: `http://${cleanIp}/stream`
+            } : {}
+        });
+
+        console.log(`✅ Auto-registered device: ${serialNumber} (${deviceType}) assigned to ${defaultProperty.name}`);
     }
 
     // Extract IP address from request if not provided in body

@@ -59,7 +59,7 @@ const DeviceManagement = () => {
                         setDevices(healthRes.data.devices);
                     }
                     // Still fetch properties for the add device modal
-                    const propsRes = await apiFetch<Property[]>('/properties');
+                    const propsRes = await apiFetch<Property[]>('/api/properties');
                     setProperties(propsRes.data);
                 } catch (healthErr) {
                     console.warn('Health endpoint failed, falling back to property-based fetch:', healthErr);
@@ -79,13 +79,13 @@ const DeviceManagement = () => {
 
     const fetchDevicesByProperty = async () => {
         // Fetch properties first
-        const propsRes = await apiFetch<Property[]>('/properties');
+        const propsRes = await apiFetch<Property[]>('/api/properties');
         setProperties(propsRes.data);
 
         if (propsRes.data.length > 0) {
             // Fetch devices for all properties (parallel)
             const devicesPromises = propsRes.data.map((p: Property) =>
-                apiFetch<Device[]>(`/devices/property/${p._id}`)
+                apiFetch<Device[]>(`/api/devices/property/${p._id}`)
             );
             const devicesRes = await Promise.all(devicesPromises);
             const allDevices = devicesRes.flatMap(r => r.data);
@@ -105,7 +105,7 @@ const DeviceManagement = () => {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await apiFetch('/devices', {
+            await apiFetch('/api/devices', {
                 method: 'POST',
                 body: formData
             });

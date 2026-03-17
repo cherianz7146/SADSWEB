@@ -10,7 +10,8 @@ import {
   ArrowRightOnRectangleIcon,
   PlayCircleIcon,
   StopCircleIcon,
-  ArrowPathIcon
+  ArrowPathIcon,
+  ExclamationTriangleIcon
 } from '@heroicons/react/24/outline';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../utils/api';
@@ -69,26 +70,45 @@ const AdminDashboard: React.FC = () => {
   };
 
   // Get ESP32 camera stream URL (MJPEG streams - no cache-busting needed)
-  const getEsp32StreamUrl = (device: Device | null, forceRefresh: boolean = false) => {
-    if (!device) return null;
-    
-    let baseUrl = '';
-    
-    // Use streamUrl from metadata if available
-    if (device.metadata?.streamUrl) {
-      baseUrl = device.metadata.streamUrl;
-    } else if (device.metadata?.ipAddress) {
-      // Fallback to IP address from metadata
-      baseUrl = `http://${device.metadata.ipAddress}/stream`;
-    } else {
-      // Default fallback (for devices registered before metadata was added)
-      const deviceIp = '10.63.77.44'; // ESP32 camera IP address
-      baseUrl = `http://${deviceIp}/stream`;
+  // Use direct ESP32 URL by default (more reliable than proxy)
+  // Proxy can be used as fallback if needed
+  const getEsp32StreamUrl = (device: Device | null, forceRefresh: boolean = false, useProxy: boolean = false) => {
+    if (!device) {
+      console.warn('⚠️ getEsp32StreamUrl: No device provided');
+      return null;
     }
     
-    // MJPEG streams don't work with query parameters - return clean URL
-    // Only add timestamp if explicitly forcing refresh (for manual retry)
-    return forceRefresh ? `${baseUrl}?_t=${Date.now()}` : baseUrl;
+    let esp32StreamUrl = '';
+    
+    // Get the actual ESP32 stream URL
+    if (device.metadata?.streamUrl) {
+      esp32StreamUrl = device.metadata.streamUrl;
+    } else if (device.metadata?.ipAddress) {
+      esp32StreamUrl = `http://${device.metadata.ipAddress}/stream`;
+    } else {
+      // Default fallback
+      const deviceIp = '10.82.225.44';
+      esp32StreamUrl = `http://${deviceIp}/stream`;
+      console.warn('⚠️ No metadata found, using default IP:', esp32StreamUrl);
+    }
+    
+    // Use direct ESP32 URL by default (more reliable)
+    // Only use proxy if explicitly requested (proxy has been timing out)
+    if (useProxy) {
+      const proxyUrl = `/api/stream/proxy?streamUrl=${encodeURIComponent(esp32StreamUrl)}`;
+      const finalUrl = forceRefresh ? `${proxyUrl}&_t=${Date.now()}` : proxyUrl;
+      console.log('📹 Using backend proxy for stream:', finalUrl);
+      console.log('   Original ESP32 URL:', esp32StreamUrl);
+      return finalUrl;
+    }
+    
+    // Default: Use direct ESP32 URL (works better, avoids proxy timeout issues)
+    // Always add timestamp for cache-busting (MJPEG streams need this to reload)
+    const timestamp = Date.now();
+    const finalUrl = `${esp32StreamUrl}?t=${timestamp}`;
+    console.log('📹 Using direct ESP32 URL for stream:', finalUrl);
+    console.log('📹 Base URL:', esp32StreamUrl);
+    return finalUrl;
   };
 
   const fetchStats = async () => {
@@ -130,12 +150,22 @@ const AdminDashboard: React.FC = () => {
           if (esp32Cameras.length > 0) {
             const esp32Camera = esp32Cameras[0];
             console.log('✅ Auto-selecting ESP32 camera:', esp32Camera);
+            console.log('📡 Device metadata:', esp32Camera.metadata);
+            console.log('📡 Device IP:', esp32Camera.metadata?.ipAddress || 'Not set');
+            console.log('📡 Device status:', esp32Camera.status);
             setSelectedDevice(esp32Camera);
             // Don't auto-enable - let user click "Start Camera" button
-            console.log('✅ ESP32 camera ready, stream URL:', getEsp32StreamUrl(esp32Camera));
+            const streamUrl = getEsp32StreamUrl(esp32Camera);
+            console.log('✅ ESP32 camera ready, stream URL:', streamUrl);
+            if (!esp32Camera.metadata?.ipAddress && !esp32Camera.metadata?.streamUrl) {
+              console.warn('⚠️ ESP32 camera has no IP address in metadata. Make sure ESP32 is sending heartbeats.');
+              console.warn('   Expected static IP: 10.82.225.44');
+            }
           } else {
             console.warn('⚠️ No ESP32 cameras found in device list');
             console.warn('   Available devices:', allDevices.map(d => `${d.serialNumber} (${d.type})`));
+            console.warn('   💡 If ESP32 is powered on, it should auto-register via heartbeat.');
+            console.warn('   💡 Check ESP32 serial monitor to verify it\'s connecting to WiFi and sending heartbeats.');
           }
         } else {
           console.error('❌ No devices in health response');
@@ -169,6 +199,10 @@ const AdminDashboard: React.FC = () => {
   // Force stream reload when camera is enabled or device changes
   useEffect(() => {
     if (!cameraEnabled || !selectedDevice) {
+      // Clear stream when camera is disabled
+      if (streamImgRef.current) {
+        streamImgRef.current.src = '';
+      }
       return;
     }
     
@@ -178,41 +212,142 @@ const AdminDashboard: React.FC = () => {
     console.log('📹 Device:', selectedDevice.serialNumber);
     console.log('📹 Device metadata:', selectedDevice.metadata);
     
+    if (!streamUrl) {
+      console.error('❌ No stream URL available for device');
+      return;
+    }
+    
     // Show loading indicator
     const loadingDiv = document.getElementById(`stream-loading-${selectedDevice._id}`);
     if (loadingDiv) {
       loadingDiv.style.display = 'flex';
     }
     
-    // Auto-hide loading indicator after 3 seconds (in case onLoad doesn't fire for MJPEG streams)
-      const loadingTimeout = setTimeout(() => {
+    // Periodic check to see if stream loaded (MJPEG streams may not trigger onLoad)
+    // Check more frequently initially, then less frequently
+    let checkCount = 0;
+    const checkInterval = setInterval(() => {
+      if (streamImgRef.current && cameraEnabled) {
+        const img = streamImgRef.current;
         const loadingDiv = document.getElementById(`stream-loading-${selectedDevice._id}`);
-        if (loadingDiv) {
-          console.log('⏱️ Auto-hiding loading indicator after 3 seconds');
-          loadingDiv.style.display = 'none';
-        }
-      }, 3000);
-    
-    // Ensure image tag is visible and has correct src
-    const imageTimeout = setTimeout(() => {
-      if (streamImgRef.current && streamUrl) {
-        console.log('📹 Current image src:', streamImgRef.current.src);
-        if (streamImgRef.current.src !== streamUrl) {
-          console.log('🔄 Updating image src to:', streamUrl);
-          streamImgRef.current.src = streamUrl;
-        }
-        // Make sure image is visible
-        if (streamImgRef.current.style.display === 'none') {
-          streamImgRef.current.style.display = 'block';
+        checkCount++;
+        
+        // Check if image has valid dimensions (means it loaded)
+        // For MJPEG streams, we also check if the image src is set and image is loading
+        const hasDimensions = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+        const isStreaming = img.src && img.src.includes('stream') && (img.complete || img.naturalWidth > 0);
+        
+        if (hasDimensions || (isStreaming && checkCount > 2)) {
+          console.log('✅ Stream loaded (detected via periodic check)');
+          console.log('   Dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+          console.log('   Complete:', img.complete);
+          if (loadingDiv) {
+            loadingDiv.style.display = 'none';
+          }
+          clearInterval(checkInterval);
+        } else {
+          // Log status every 2 seconds for debugging (more frequent)
+          const elapsed = Math.floor((Date.now() - (window as any).streamStartTime) / 1000);
+          if (elapsed > 0 && elapsed % 2 === 0) {
+            console.log(`⏱️ Stream check (${elapsed}s):`, {
+              complete: img.complete,
+              naturalWidth: img.naturalWidth,
+              naturalHeight: img.naturalHeight,
+              src: img.src.substring(0, 50) + '...',
+              checkCount: checkCount
+            });
+          }
         }
       } else {
-        console.warn('⚠️ Image ref not available');
+        clearInterval(checkInterval);
       }
-    }, 300);
+    }, 500); // Check every 500ms for faster detection
+    
+    // Store start time for elapsed time tracking
+    (window as any).streamStartTime = Date.now();
+    
+    // Auto-hide loading indicator after 10 seconds if still loading (reduced from 15s)
+    const loadingTimeout = setTimeout(() => {
+      const loadingDiv = document.getElementById(`stream-loading-${selectedDevice._id}`);
+      if (loadingDiv && streamImgRef.current) {
+        const img = streamImgRef.current;
+        const hasDimensions = img.complete && img.naturalWidth > 0 && img.naturalHeight > 0;
+        const isStreaming = img.src && img.src.includes('stream');
+        
+        if (hasDimensions || isStreaming) {
+          console.log('✅ Stream loaded (detected via timeout check)');
+          loadingDiv.style.display = 'none';
+        } else {
+          console.warn('⚠️ Stream still loading after 10 seconds');
+          console.warn('   Image complete:', img.complete);
+          console.warn('   Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+          console.warn('   Stream URL:', streamUrl);
+          console.warn('   💡 This might be normal for MJPEG streams. The stream may still be loading.');
+          console.warn('   💡 Try opening the stream URL directly in a new tab: ' + streamUrl);
+          // Hide loading indicator anyway to show the stream area (even if blank)
+          loadingDiv.style.display = 'none';
+        }
+      }
+      clearInterval(checkInterval);
+    }, 10000); // Reduced to 10 seconds
+    
+    // Set image src immediately and also after a short delay to ensure it updates
+    if (streamImgRef.current) {
+      console.log('🔄 Setting image src to:', streamUrl);
+      console.log('📡 Device IP from metadata:', selectedDevice.metadata?.ipAddress);
+      console.log('📡 Device streamUrl from metadata:', selectedDevice.metadata?.streamUrl);
+      console.log('📡 Final stream URL:', streamUrl);
+      
+      // For MJPEG streams, we need to set the src directly without clearing first
+      // Clearing can break MJPEG stream connections
+      if (streamImgRef.current.src !== streamUrl) {
+        console.log('✅ Setting image src to:', streamUrl);
+        streamImgRef.current.src = streamUrl;
+      }
+      
+      // Make sure image is visible
+      streamImgRef.current.style.display = 'block';
+      streamImgRef.current.style.visibility = 'visible';
+      streamImgRef.current.style.opacity = '1';
+      
+      // Preload the stream by setting src immediately
+      // MJPEG streams start loading as soon as src is set
+      console.log('🚀 Stream URL set, starting load...');
+      
+      // Add a small delay check to see if stream starts quickly
+      setTimeout(() => {
+        if (streamImgRef.current) {
+          const img = streamImgRef.current;
+          if (img.naturalWidth > 0 || img.complete) {
+            console.log('✅ Stream started quickly!');
+            const loadingDiv = document.getElementById(`stream-loading-${selectedDevice._id}`);
+            if (loadingDiv) {
+              loadingDiv.style.display = 'none';
+            }
+          } else {
+            console.log('⏳ Stream still initializing (this is normal for MJPEG)');
+          }
+        }
+      }, 1000); // Check after 1 second
+    } else {
+      console.warn('⚠️ Image ref not available, will retry...');
+      // Retry after a short delay if ref isn't ready
+      const retryTimeout = setTimeout(() => {
+        if (streamImgRef.current && streamUrl && cameraEnabled) {
+          console.log('🔄 Retry: Setting image src to:', streamUrl);
+          streamImgRef.current.src = streamUrl;
+          streamImgRef.current.style.display = 'block';
+        }
+      }, 500);
+      return () => {
+        clearTimeout(loadingTimeout);
+        clearTimeout(retryTimeout);
+      };
+    }
     
     return () => {
       clearTimeout(loadingTimeout);
-      clearTimeout(imageTimeout);
+      clearInterval(checkInterval);
     };
   }, [cameraEnabled, selectedDevice?._id]);
 
@@ -221,14 +356,32 @@ const AdminDashboard: React.FC = () => {
     const checkYolo = async () => {
       try {
         const response = await apiFetch<any>('/api/yolo/health');
-        setYoloAvailable(response.data.available);
-        console.log('YOLO API status:', response.data.available ? '✅ Available' : '❌ Unavailable');
-        if (!response.data.available) {
+        console.log('📦 YOLO API health response:', response.data);
+        
+        // Must have both available=true AND model_loaded=true for full functionality
+        // Handle both boolean true and string "true" cases
+        const available = response.data?.available;
+        const modelLoaded = response.data?.model_loaded;
+        
+        // Convert to boolean if needed (handle string "true" or boolean true)
+        const isAvailableBool = available === true || available === 'true' || available === 'True';
+        const isModelLoadedBool = modelLoaded === true || modelLoaded === 'true' || modelLoaded === 'True';
+        
+        const isAvailable = isAvailableBool && isModelLoadedBool;
+        
+        setYoloAvailable(isAvailable);
+        console.log('YOLO API status:', isAvailable ? '✅ Available' : '❌ Unavailable');
+        console.log('   - available:', available, '(type:', typeof available, ')');
+        console.log('   - model_loaded:', modelLoaded, '(type:', typeof modelLoaded, ')');
+        if (!isAvailable) {
           console.warn('⚠️ YOLO API is not available. Detection will not work.');
+          console.warn('   Full response:', JSON.stringify(response.data, null, 2));
         }
-      } catch (err) {
+      } catch (err: any) {
         setYoloAvailable(false);
         console.error('❌ YOLO API check failed:', err);
+        console.error('   Error:', err.message || err);
+        console.error('   Error response:', err.response?.data);
       }
     };
     checkYolo();
@@ -279,10 +432,10 @@ const AdminDashboard: React.FC = () => {
     setIsDetecting(true);
     console.log('🔍 Starting detection...');
     
-    // Run detection every 3 seconds to reduce load and latency
+    // Run detection every 2 seconds for more responsive detection (same as webcam)
     detectionIntervalRef.current = setInterval(async () => {
       await runDetection();
-    }, 3000);
+    }, 2000);
   };
 
   const stopDetection = () => {
@@ -294,70 +447,137 @@ const AdminDashboard: React.FC = () => {
   };
 
   const runDetection = async () => {
-    if (!streamImgRef.current || !canvasRef.current) return;
+    if (!selectedDevice) {
+      console.warn('No device selected');
+      return;
+    }
 
     try {
-      // Capture frame from the image stream
-      const canvas = canvasRef.current;
-      const img = streamImgRef.current;
-      
-      // Wait for image to load
-      if (img.complete === false || img.naturalWidth === 0) {
-        console.log('Image not ready, skipping detection');
-        return;
+      // Get the actual ESP32 stream URL for detection
+      // The backend will fetch frames from this URL and send to YOLO
+      let esp32StreamUrl = '';
+      if (selectedDevice.metadata?.streamUrl) {
+        esp32StreamUrl = selectedDevice.metadata.streamUrl;
+      } else if (selectedDevice.metadata?.ipAddress) {
+        esp32StreamUrl = `http://${selectedDevice.metadata.ipAddress}/stream`;
+      } else {
+        // Default fallback
+        esp32StreamUrl = 'http://10.82.225.44/stream';
+        console.warn('⚠️ No metadata found, using default IP:', esp32StreamUrl);
       }
+
+      console.log('🔍 Running detection on ESP32 stream...');
+      console.log('   ESP32 Stream URL:', esp32StreamUrl);
+      console.log('   Device:', selectedDevice.serialNumber);
       
-      // Set canvas size to match image
-      canvas.width = img.naturalWidth || img.width || 640;
-      canvas.height = img.naturalHeight || img.height || 480;
-      
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      
-      // Draw image to canvas
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
-      // Convert to base64
-      const base64Image = canvas.toDataURL('image/jpeg', 0.8);
-      
-      console.log('🔍 Sending frame to YOLO API for detection...');
-      
-      // Send to YOLO API via backend
-      const response = await apiFetch<any>('/api/yolo/verify', {
+      // Use the detect-from-url endpoint which:
+      // 1. Fetches a frame from the ESP32 stream URL
+      // 2. Sends it to YOLO API for detection
+      // 3. Returns detection results
+      const response = await apiFetch<any>('/api/yolo/detect-from-url', {
         method: 'POST',
         body: {
-          image: base64Image,
-          confidence: 0.5
+          streamUrl: esp32StreamUrl, // Direct ESP32 URL (http://10.82.225.44/stream)
+          confidence: 0.25  // Lower threshold for better detection accuracy
         }
       });
 
-      console.log('📦 YOLO API Response:', response.data);
-      console.log('📦 Response keys:', Object.keys(response.data));
+      console.log('✅ Detection response received:', response.data);
       
-      // Update YOLO availability status - if we got a response, YOLO is working
-      setYoloAvailable(true);
+      // Process the response
+      await processDetectionResponse(response);
+    } catch (err: any) {
+      console.error('❌ Detection error:', err);
+      console.error('Error details:', err.message, err.response?.data);
+      
+      // Check if it's a YOLO API error
+      if (err.response?.status === 503 || err.message?.includes('YOLO') || err.message?.includes('ECONNREFUSED')) {
+        console.error('⚠️ YOLO API is not available. Please ensure:');
+        console.error('   1. YOLO API service is running on http://localhost:5001');
+        console.error('   2. Check backend/.env for YOLO_API_URL setting');
+        console.error('   3. Start the YOLO service: cd ml && python yolo_api.py');
+        setYoloAvailable(false);
+        
+        // Show error state in UI
+        setCurrentDetection({
+          label: 'YOLO API Unavailable',
+          confidence: 0,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // For other errors, show analyzing state
+        setCurrentDetection({
+          label: 'Detection Error',
+          confidence: 0,
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+  };
 
-      // Check for detections in various possible formats
-      let detections = [];
+  // Helper function to process detection response
+  const processDetectionResponse = async (response: any) => {
+    console.log('📦 Processing detection response:', response.data);
+    
+    // Update YOLO availability status - if we got a response, YOLO is working
+    setYoloAvailable(true);
+
+    // Check for detections in various possible formats
+    let detections = [];
+    
+    // Log full response for debugging
+    console.log('📦 Full detection response:', JSON.stringify(response.data, null, 2));
+    console.log('📦 Response keys:', Object.keys(response.data));
+    
+    // Try detections array first (most common) - check even if length is 0
+    if (response.data.detections && Array.isArray(response.data.detections)) {
+      detections = response.data.detections;
+      console.log(`✅ Found ${detections.length} detection(s) in 'detections' array`);
+    } 
+    // Try animal_detections array as fallback
+    else if (response.data.animal_detections && Array.isArray(response.data.animal_detections)) {
+      detections = response.data.animal_detections;
+      console.log(`✅ Found ${detections.length} detection(s) in 'animal_detections' array`);
+    } 
+    // Check if total_detections indicates there should be detections
+    else if (response.data.total_detections > 0) {
       if (response.data.detections && Array.isArray(response.data.detections)) {
         detections = response.data.detections;
-        console.log(`Found detections in 'detections' array: ${detections.length}`);
-      } else if (response.data.animal_detections && Array.isArray(response.data.animal_detections)) {
-        detections = response.data.animal_detections;
-        console.log(`Found detections in 'animal_detections' array: ${detections.length}`);
-      } else if (response.data.total_detections > 0 && response.data.detections) {
-        // Sometimes detections might be nested
-        detections = Array.isArray(response.data.detections) ? response.data.detections : [];
-        console.log(`Found ${response.data.total_detections} total detections`);
+        console.log(`✅ Found ${detections.length} detection(s) via total_detections check`);
+      } else {
+        console.warn('⚠️ total_detections > 0 but detections array is missing or empty');
       }
+    }
+    
+    // Log detection structure for debugging
+    if (detections.length > 0) {
+      console.log('🔍 Sample detection structure:', JSON.stringify(detections[0], null, 2));
+      console.log('🔍 Detection fields:', Object.keys(detections[0]));
+      console.log('🔍 Confidence value:', detections[0].confidence, 'Type:', typeof detections[0].confidence);
+    } else {
+      console.warn('⚠️ No detections found in any format');
+      console.warn('   total_detections:', response.data.total_detections);
+      console.warn('   detections exists?', !!response.data.detections);
+      console.warn('   detections is array?', Array.isArray(response.data.detections));
+      console.warn('   detections length:', response.data.detections?.length);
+    }
 
-      // Log if no detections found
-      if (detections.length === 0) {
-        console.log('⚠️ No detections found in response');
-        console.log('Response structure:', JSON.stringify(response.data, null, 2));
-      }
+    // Log if no detections found
+    if (detections.length === 0) {
+      console.log('⚠️ No detections found in response');
+      // Show "No detection" state with 0% confidence
+      const noDetection: Detection = {
+        label: 'No detection',
+        confidence: 0,
+        timestamp: new Date().toISOString()
+      };
+      setCurrentDetection(noDetection);
+      drawDetectionResult(noDetection.label, noDetection.confidence);
+      return; // Exit early if no detections
+    }
 
-      if (detections.length > 0) {
+    // Process detections
+    if (detections.length > 0) {
         console.log(`✅ Found ${detections.length} detection(s)`);
         
         // Sort by confidence (highest first)
@@ -388,12 +608,13 @@ const AdminDashboard: React.FC = () => {
 
         console.log(`🎯 Detection: ${detection.label} (${(detection.confidence * 100).toFixed(1)}%)`);
 
+        // ALWAYS show detection result with confidence, regardless of confidence level
         setCurrentDetection(detection);
         drawDetectionResult(detection.label, detection.confidence);
 
-        // If confidence is high enough (25% or more), save and notify
-        // Lower threshold to catch more detections
-        if (detection.confidence >= 0.25) {
+        // If confidence is high enough (65% or more), save and notify
+        // Increased threshold to reduce false positives (52-54% is too low)
+        if (detection.confidence >= 0.65) {
           const now = Date.now();
           // Only post once every 3 seconds to avoid spam but ensure notifications
           if (now - lastPostTimeRef.current > 3000) {
@@ -419,67 +640,146 @@ const AdminDashboard: React.FC = () => {
               }));
               
               console.log('✅ Detection saved and stats updated');
-            } catch (postError) {
+            } catch (postError: any) {
               console.error('❌ Failed to save detection:', postError);
+              console.error('   Error details:', postError.response?.data || postError.message);
+              console.error('   Detection data that failed:', detectionData);
+              
+              // Show user-friendly error notification
+              if ('Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification('⚠️ Detection Save Failed', {
+                    body: `Failed to save detection: ${postError.message || 'Unknown error'}. Check console for details.`,
+                    icon: '/favicon.ico',
+                    tag: `detection-error-${Date.now()}`
+                  });
+                } catch (notifErr) {
+                  console.error('Failed to show error notification:', notifErr);
+                }
+              }
             }
           } else {
             console.log('⏳ Waiting before posting next detection...');
           }
         } else {
-          console.log(`⚠️ Detection confidence too low: ${(detection.confidence * 100).toFixed(1)}% (minimum: 25%)`);
+          console.log(`⚠️ Detection confidence too low to save: ${(detection.confidence * 100).toFixed(1)}% (minimum: 65%)`);
+          // Still show the detection on screen even if confidence is low (for monitoring)
+          // But don't save or notify for low confidence detections
         }
-      } else {
-        console.log('❌ No detections found in response');
-        setCurrentDetection(null);
-        // Clear canvas overlay
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-      }
-    } catch (err: any) {
-      console.error('❌ Detection error:', err);
-      console.error('Error details:', err.message, err.response?.data);
     }
   };
 
   const drawDetectionResult = (label: string, confidence: number) => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const img = streamImgRef.current;
+    
+    if (!canvas) {
+      console.warn('⚠️ Canvas ref not available for drawing detection');
+      return;
+    }
 
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.warn('⚠️ Could not get canvas context');
+      return;
+    }
 
-    // Clear previous drawings (keep the image)
-    // We'll draw overlay on top
+    // Set canvas size to match the image if available, otherwise use container size
+    if (img && img.complete && img.naturalWidth > 0) {
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+    } else {
+      // Fallback: use container dimensions
+      const container = canvas.parentElement;
+      if (container) {
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+      } else {
+        // Default dimensions
+        canvas.width = 640;
+        canvas.height = 480;
+      }
+    }
 
-    // Draw label and confidence
-    const text = `${label} (${(confidence * 100).toFixed(1)}%)`;
+    // Clear previous drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Skip drawing if confidence is 0 and label indicates no detection/error
+    if (confidence === 0 && (label === 'No detection' || label === 'Analyzing...' || label.includes('Error') || label.includes('Unavailable'))) {
+      // Don't draw canvas overlay for these states - UI overlay will show them
+      return;
+    }
+
     const isAnimal = label.toLowerCase().includes('elephant') || 
                     label.toLowerCase().includes('tiger') ||
                     label.toLowerCase().includes('leopard') ||
                     label.toLowerCase().includes('deer') ||
                     label.toLowerCase().includes('boar');
     
-    ctx.fillStyle = isAnimal && confidence >= 0.7 ? 'rgba(239, 68, 68, 0.8)' : 'rgba(59, 130, 246, 0.8)';
-    ctx.font = 'bold 24px Arial';
+    // Draw detection overlay in bottom-left corner (similar to the other detection interface)
+    const padding = 15;
+    const overlayX = padding;
+    const overlayY = canvas.height - 120;
+    const overlayWidth = 300;
+    const overlayHeight = 90;
     
-    const textWidth = ctx.measureText(text).width;
-    ctx.fillRect(10, 10, textWidth + 20, 40);
+    // Background with transparency
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(overlayX, overlayY, overlayWidth, overlayHeight);
     
+    // Border color based on confidence
+    let borderColor = 'rgba(59, 130, 246, 0.9)'; // Default blue
+    if (confidence >= 0.7) {
+      borderColor = isAnimal ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'; // Red for animals, green for high confidence
+    } else if (confidence >= 0.5) {
+      borderColor = 'rgba(245, 158, 11, 0.9)'; // Yellow
+    } else if (confidence > 0) {
+      borderColor = 'rgba(239, 68, 68, 0.9)'; // Red
+    }
+    
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(overlayX, overlayY, overlayWidth, overlayHeight);
+    
+    // Draw label
     ctx.fillStyle = 'white';
-    ctx.fillText(text, 20, 38);
-
-    // Draw confidence bar
-    const barWidth = canvas.width - 40;
-    const barHeight = 10;
-    const barY = canvas.height - 30;
+    ctx.font = 'bold 18px Arial';
+    ctx.fillText(label, overlayX + 12, overlayY + 28);
     
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(20, barY, barWidth, barHeight);
+    // Draw confidence percentage
+    ctx.font = '16px Arial';
+    ctx.fillText(`Confidence: ${(confidence * 100).toFixed(1)}%`, overlayX + 12, overlayY + 52);
     
-    ctx.fillStyle = confidence >= 0.7 ? '#10b981' : '#3b82f6';
-    ctx.fillRect(20, barY, barWidth * confidence, barHeight);
+    // Draw confidence level badge (High/Medium/Low) only if confidence > 0
+    if (confidence > 0) {
+      const confidenceLevel = confidence >= 0.85 ? 'High' : confidence >= 0.70 ? 'Medium' : 'Low';
+      const badgeColor = confidence >= 0.85 ? '#10b981' : confidence >= 0.70 ? '#f59e0b' : '#ef4444';
+      
+      ctx.fillStyle = badgeColor;
+      ctx.fillRect(overlayX + overlayWidth - 80, overlayY + 12, 65, 25);
+      
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(confidenceLevel, overlayX + overlayWidth - 47.5, overlayY + 29);
+      ctx.textAlign = 'left';
+    }
+    
+    // Draw confidence bar at the bottom
+    const barX = overlayX + 12;
+    const barY = overlayY + overlayHeight - 20;
+    const barWidth = overlayWidth - 24;
+    const barHeight = 8;
+    
+    // Background bar
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+    
+    // Confidence bar (only if confidence > 0)
+    if (confidence > 0) {
+      ctx.fillStyle = confidence >= 0.7 ? '#10b981' : confidence >= 0.5 ? '#f59e0b' : '#ef4444';
+      ctx.fillRect(barX, barY, barWidth * confidence, barHeight);
+    }
   };
 
   const postDetection = async (detection: Detection) => {
@@ -494,7 +794,7 @@ const AdminDashboard: React.FC = () => {
         label: normalizedLabel,
         probability: detection.confidence,
         confidence: detection.confidence * 100,
-        source: 'esp32-camera',
+        source: 'esp32', // Use enum value from detection model
         detectedAt: detection.timestamp
       };
 
@@ -779,10 +1079,22 @@ const AdminDashboard: React.FC = () => {
                   {/* YOLO Status Indicator */}
                   {isDetecting && (
                     <div className="flex items-center space-x-2">
-                      <div className={`w-2 h-2 rounded-full ${yoloAvailable ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-                      <span className={`text-sm font-medium ${yoloAvailable ? 'text-green-600' : 'text-yellow-600'}`}>
-                        YOLO {yoloAvailable ? 'Ready' : 'Checking...'}
+                      <div className={`w-2 h-2 rounded-full ${yoloAvailable ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                      <span className={`text-sm font-medium ${yoloAvailable ? 'text-green-600' : 'text-red-600'}`}>
+                        YOLO {yoloAvailable ? 'Ready' : 'Unavailable'}
                       </span>
+                    </div>
+                  )}
+                  {/* YOLO Warning Banner */}
+                  {!yoloAvailable && (
+                    <div className="absolute top-20 left-0 right-0 mx-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 z-50">
+                      <div className="flex items-start gap-2">
+                        <ExclamationTriangleIcon className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                        <div className="flex-1">
+                          <p className="text-sm font-semibold text-yellow-900">YOLO API Not Running</p>
+                          <p className="text-xs text-yellow-800 mt-1">Detection requires the YOLO service. Run: <code className="bg-yellow-100 px-1 rounded">start_yolo_api.bat</code> or <code className="bg-yellow-100 px-1 rounded">cd ml && python yolo_api.py</code></p>
+                        </div>
+                      </div>
                     </div>
                   )}
                   
@@ -856,19 +1168,27 @@ const AdminDashboard: React.FC = () => {
                           status: 'offline',
                           assignedProperty: 'Default Property',
                           metadata: {
-                            ipAddress: '10.63.77.44',
-                            streamUrl: 'http://10.63.77.44/stream'
+                            ipAddress: '10.82.225.44',
+                            streamUrl: 'http://10.82.225.44/stream'
                           }
                         };
                         setSelectedDevice(fallbackDevice);
                         setCameraEnabled(true);
                         console.log('Auto-created fallback device and started camera');
                       } else {
-                        // Stop detection when stopping camera
-                        if (isDetecting) {
-                          stopDetection();
+                        // Toggle camera on/off
+                        if (cameraEnabled) {
+                          // Stop camera
+                          if (isDetecting) {
+                            stopDetection();
+                          }
+                          setCameraEnabled(false);
+                          console.log('🛑 Camera stopped');
+                        } else {
+                          // Start camera
+                          setCameraEnabled(true);
+                          console.log('▶️ Camera started');
                         }
-                        setCameraEnabled(false);
                       }
                     }}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -884,10 +1204,10 @@ const AdminDashboard: React.FC = () => {
               <div className="relative" style={{ aspectRatio: '4/3', minHeight: '400px' }}>
                 {cameraEnabled && selectedDevice ? (
                   <div className="relative w-full h-full bg-gray-900 rounded-lg overflow-hidden">
-                    {/* Loading indicator - auto-hide after 3 seconds */}
+                    {/* Loading indicator - auto-hide when stream loads */}
                     <div 
                       id={`stream-loading-${selectedDevice._id}`} 
-                      className="absolute inset-0 flex items-center justify-center bg-gray-900 z-30"
+                      className="absolute inset-0 flex items-center justify-center bg-gray-900 z-30 transition-opacity duration-300"
                       style={{ display: 'flex' }}
                     >
                       <div className="text-center text-white">
@@ -896,46 +1216,140 @@ const AdminDashboard: React.FC = () => {
                         <p className="text-xs text-gray-400 mt-2 break-all px-4">{getEsp32StreamUrl(selectedDevice) || 'No URL'}</p>
                       </div>
                     </div>
+                    {/* Fallback: Use iframe for MJPEG stream (more reliable for some browsers) */}
+                    <iframe
+                      key={`iframe-fallback-${selectedDevice._id}-${cameraEnabled}`}
+                      src={cameraEnabled ? (getEsp32StreamUrl(selectedDevice) || '') : ''}
+                      className="absolute inset-0 w-full h-full object-contain"
+                      style={{ 
+                        backgroundColor: '#000',
+                        zIndex: 0,
+                        display: cameraEnabled ? 'block' : 'none',
+                        border: 'none'
+                      }}
+                      title={`ESP32 Camera Stream ${selectedDevice.serialNumber}`}
+                      allow="camera"
+                    />
                     {/* Primary: Use img tag for MJPEG stream (better browser support) */}
                     <img
                       ref={streamImgRef}
                       key={`img-primary-${selectedDevice._id}-${cameraEnabled}`}
-                      src={getEsp32StreamUrl(selectedDevice) || ''}
+                      src={cameraEnabled ? (getEsp32StreamUrl(selectedDevice) || '') : ''}
                       alt={`ESP32 Camera ${selectedDevice.serialNumber}`}
                       className="absolute inset-0 w-full h-full object-contain"
+                      crossOrigin="anonymous"
                       style={{ 
                         backgroundColor: '#000',
                         zIndex: 1,
-                        imageRendering: 'auto'
+                        imageRendering: 'auto',
+                        display: cameraEnabled ? 'block' : 'none',
+                        opacity: cameraEnabled ? 1 : 0
                       }}
                       loading="eager"
-                      onLoad={() => {
+                      onLoadStart={() => {
+                        console.log('🔄 Stream loading started...');
+                        const streamUrl = getEsp32StreamUrl(selectedDevice);
+                        console.log('📹 Stream URL:', streamUrl);
+                        console.log('📹 Full img src:', streamImgRef.current?.src);
+                      }}
+                      onAbort={() => {
+                        console.warn('⚠️ Stream loading aborted');
+                        const streamUrl = getEsp32StreamUrl(selectedDevice);
+                        console.warn('📹 Stream URL that was aborted:', streamUrl);
+                      }}
+                      onStalled={() => {
+                        console.warn('⚠️ Stream loading stalled');
+                        const streamUrl = getEsp32StreamUrl(selectedDevice);
+                        console.warn('📹 Stream URL that stalled:', streamUrl);
+                      }}
+                      onSuspend={() => {
+                        console.warn('⚠️ Stream loading suspended');
+                        const streamUrl = getEsp32StreamUrl(selectedDevice);
+                        console.warn('📹 Stream URL that was suspended:', streamUrl);
+                      }}
+                      onLoad={(e) => {
+                        const target = e.currentTarget;
                         const streamUrl = getEsp32StreamUrl(selectedDevice);
                         console.log('✅ Image stream loaded successfully');
                         console.log('📹 Stream URL:', streamUrl);
+                        console.log('📹 Image dimensions:', target.naturalWidth, 'x', target.naturalHeight);
+                        console.log('📹 Image complete:', target.complete);
+                        console.log('📹 Image naturalWidth:', target.naturalWidth);
+                        console.log('📹 Image naturalHeight:', target.naturalHeight);
+                        
                         // Hide loading indicator
                         const loadingDiv = document.getElementById(`stream-loading-${selectedDevice._id}`);
                         if (loadingDiv) {
                           loadingDiv.style.display = 'none';
                         }
+                        
+                        // Size canvas to match image (only if we have valid dimensions)
+                        if (canvasRef.current && target.naturalWidth > 0 && target.naturalHeight > 0) {
+                          canvasRef.current.width = target.naturalWidth;
+                          canvasRef.current.height = target.naturalHeight;
+                          console.log('✅ Canvas sized to match image:', canvasRef.current.width, 'x', canvasRef.current.height);
+                          
+                          // Redraw detection overlay if there's a current detection
+                          if (currentDetection && currentDetection.confidence > 0) {
+                            drawDetectionResult(currentDetection.label, currentDetection.confidence);
+                          }
+                        } else {
+                          console.warn('⚠️ Image dimensions not available yet, will retry...');
+                          // Retry canvas sizing after a short delay
+                          setTimeout(() => {
+                            if (canvasRef.current && target.naturalWidth > 0 && target.naturalHeight > 0) {
+                              canvasRef.current.width = target.naturalWidth;
+                              canvasRef.current.height = target.naturalHeight;
+                              console.log('✅ Canvas sized after retry:', canvasRef.current.width, 'x', canvasRef.current.height);
+                            }
+                          }, 500);
+                        }
+                        
                         // Remove any error messages on successful load
                         const errorDiv = document.querySelector('.stream-error');
                         if (errorDiv) {
                           errorDiv.remove();
                         }
                       }}
-                      onLoadStart={() => {
-                        console.log('🔄 Stream loading started...');
-                        const streamUrl = getEsp32StreamUrl(selectedDevice);
-                        console.log('📹 Stream URL:', streamUrl);
-                      }}
                       onError={(e) => {
                         const target = e.currentTarget;
-                        const streamUrl = getEsp32StreamUrl(selectedDevice);
+                        const currentUrl = target.src;
+                        const directUrl = getEsp32StreamUrl(selectedDevice);
+                        const proxyUrl = getEsp32StreamUrl(selectedDevice, false, true);
+                        
                         console.error('❌ Image stream failed to load ESP32 stream');
-                        console.error('   Attempted URL:', streamUrl);
-                        console.error('   Current src:', target.src);
+                        console.error('   Attempted URL:', currentUrl);
+                        console.error('   Direct ESP32 URL:', directUrl);
+                        console.error('   Proxy URL (fallback):', proxyUrl);
                         console.error('   Device:', selectedDevice);
+                        console.error('   Image complete:', target.complete);
+                        console.error('   Image naturalWidth:', target.naturalWidth);
+                        console.error('   Image naturalHeight:', target.naturalHeight);
+                        
+                        // Try proxy URL as fallback if direct URL failed
+                        if (!currentUrl.includes('/api/stream/proxy')) {
+                          console.log('🔄 Direct URL failed, trying proxy as fallback...');
+                          setTimeout(() => {
+                            if (streamImgRef.current && !streamImgRef.current.complete) {
+                              streamImgRef.current.src = proxyUrl;
+                              console.log('   ✅ Switched to proxy URL:', proxyUrl);
+                            }
+                          }, 2000); // Wait 2 seconds before fallback
+                        }
+                        
+                        // Diagnostic steps
+                        console.error('🔍 Diagnostic steps:');
+                        console.error('   1. Test direct URL:', directUrl);
+                        console.error('   2. Test proxy URL:', proxyUrl);
+                        console.error('   3. Check ESP32 Serial Monitor for connection status');
+                        console.error('   4. Verify ESP32 IP address: 10.82.225.44');
+                        console.error('   5. Ensure ESP32 and computer are on same network');
+                        
+                        // Hide loading indicator
+                        const loadingDiv = document.getElementById(`stream-loading-${selectedDevice._id}`);
+                        if (loadingDiv) {
+                          loadingDiv.style.display = 'none';
+                        }
                         
                         // Remove any existing error div
                         const existingError = target.parentElement?.querySelector('.stream-error');
@@ -948,13 +1362,15 @@ const AdminDashboard: React.FC = () => {
                           <div class="text-center p-4 max-w-md">
                             <p class="text-red-400 mb-3 font-semibold text-lg">Stream Connection Error</p>
                             <p class="text-xs text-gray-400 mb-2">Cannot connect to ${selectedDevice.serialNumber}</p>
-                            <p class="text-xs text-gray-500 mb-1 break-all">Stream URL: ${streamUrl || 'N/A'}</p>
+                            <p class="text-xs text-gray-500 mb-1 break-all">Proxy URL: ${proxyUrl || 'N/A'}</p>
+                            <p class="text-xs text-gray-500 mb-1 break-all">Direct URL: ${directUrl || 'N/A'}</p>
                             <div class="mt-4 space-y-2">
                               <p class="text-xs text-yellow-400 font-semibold">Troubleshooting Steps:</p>
                               <ol class="text-xs text-gray-400 text-left list-decimal list-inside space-y-1">
                                 <li>Verify ESP32 is powered on and connected to WiFi</li>
-                                <li>Test stream directly: <a href="${streamUrl}" target="_blank" class="text-blue-400 underline hover:text-blue-300">Open in New Tab</a></li>
-                                <li>Check IP address: ${selectedDevice.metadata?.ipAddress || '10.63.77.44'}</li>
+                                <li>Test direct stream: <a href="${directUrl}" target="_blank" class="text-blue-400 underline hover:text-blue-300">Open Direct URL</a></li>
+                                <li>Test proxy stream: <a href="${proxyUrl}" target="_blank" class="text-blue-400 underline hover:text-blue-300">Open Proxy URL</a></li>
+                                <li>Check IP address: ${selectedDevice.metadata?.ipAddress || '10.82.225.44'}</li>
                                 <li>Ensure ESP32 and computer are on same network</li>
                               </ol>
 
@@ -1059,8 +1475,8 @@ const AdminDashboard: React.FC = () => {
                                   <input 
                                     type="text" 
                                     id="new-ip-input"
-                                    placeholder="New IP (e.g., 10.63.77.44)"
-                                    value="${selectedDevice.metadata?.ipAddress || '10.63.77.44'}"
+                                    placeholder="New IP (e.g., 10.82.225.44)"
+                                    value="${selectedDevice.metadata?.ipAddress || '10.82.225.44'}"
                                     class="flex-1 px-2 py-1 bg-gray-800 text-white text-xs rounded border border-gray-600 focus:outline-none focus:border-blue-500"
                                   />
                                   <button 
@@ -1182,18 +1598,61 @@ const AdminDashboard: React.FC = () => {
                       ref={canvasRef}
                       className="absolute top-0 left-0 w-full h-full pointer-events-none z-10"
                     />
-                    {/* Detection Result Overlay */}
-                    {currentDetection && isDetecting && (
-                      <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-75 text-white p-4 rounded-lg z-20">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-semibold">{currentDetection.label}</p>
-                            <p className="text-sm opacity-75">
-                              Confidence: {(currentDetection.confidence * 100).toFixed(1)}%
+                    {/* Detection Result Overlay - Enhanced with confidence display */}
+                    {isDetecting && (
+                      <div 
+                        className="absolute bottom-4 left-4 bg-black bg-opacity-80 text-white p-3 rounded-lg z-20 border-2 shadow-lg" 
+                        style={{ 
+                          minWidth: '280px',
+                          borderColor: currentDetection ? (
+                            currentDetection.confidence >= 0.85 ? '#10b981' :
+                            currentDetection.confidence >= 0.70 ? '#f59e0b' :
+                            currentDetection.confidence > 0 ? '#ef4444' : '#6b7280'
+                          ) : '#6b7280'
+                        }}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <p className="font-bold text-lg">
+                              {currentDetection ? currentDetection.label : 'Analyzing...'}
                             </p>
+                            {currentDetection && currentDetection.confidence > 0 && (
+                              <div className={`px-3 py-1 rounded-full text-xs font-bold ${
+                                currentDetection.confidence >= 0.85 ? 'bg-green-500 text-white' :
+                                currentDetection.confidence >= 0.70 ? 'bg-yellow-500 text-white' :
+                                'bg-red-500 text-white'
+                              }`}>
+                                {currentDetection.confidence >= 0.85 ? 'High' : currentDetection.confidence >= 0.70 ? 'Medium' : 'Low'}
+                              </div>
+                            )}
                           </div>
-                          <div className={`px-3 py-1 rounded-full text-sm font-semibold ${getConfidenceColor(currentDetection.confidence)}`}>
-                            {currentDetection.confidence >= 0.85 ? 'High' : currentDetection.confidence >= 0.70 ? 'Medium' : 'Low'}
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">
+                              Confidence: <span className={`font-bold ${
+                                currentDetection && currentDetection.confidence > 0 ? (
+                                  currentDetection.confidence >= 0.7 ? 'text-green-300' :
+                                  currentDetection.confidence >= 0.5 ? 'text-yellow-300' :
+                                  'text-red-300'
+                                ) : 'text-gray-400'
+                              }`}>
+                                {currentDetection && currentDetection.confidence > 0 
+                                  ? `${(currentDetection.confidence * 100).toFixed(1)}%`
+                                  : '0.0%'}
+                              </span>
+                            </p>
+                            {/* Confidence bar */}
+                            <div className="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                              <div 
+                                className={`h-full transition-all duration-300 ${
+                                  currentDetection && currentDetection.confidence > 0 ? (
+                                    currentDetection.confidence >= 0.7 ? 'bg-green-500' :
+                                    currentDetection.confidence >= 0.5 ? 'bg-yellow-500' :
+                                    'bg-red-500'
+                                  ) : 'bg-gray-500'
+                                }`}
+                                style={{ width: `${currentDetection && currentDetection.confidence > 0 ? currentDetection.confidence * 100 : 0}%` }}
+                              ></div>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -1212,11 +1671,13 @@ const AdminDashboard: React.FC = () => {
                         <span>DETECTING</span>
                       </div>
                     )}
-                    {selectedDevice.assignedProperty && (
-                      <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs z-20">
-                        {typeof selectedDevice.assignedProperty === 'object' 
-                          ? selectedDevice.assignedProperty.name 
-                          : 'Property'}
+                    {currentDetection && isDetecting && (
+                      <div className={`absolute top-2 right-40 px-2 py-1 rounded text-xs font-medium z-20 ${
+                        currentDetection.confidence >= 0.85 ? 'bg-green-500 text-white' :
+                        currentDetection.confidence >= 0.70 ? 'bg-yellow-500 text-white' :
+                        'bg-red-500 text-white'
+                      }`}>
+                        <span className="font-bold">{(currentDetection.confidence * 100).toFixed(0)}%</span>
                       </div>
                     )}
                   </div>

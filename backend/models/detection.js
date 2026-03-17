@@ -5,7 +5,7 @@ const detectionSchema = new mongoose.Schema({
   propertyId: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', index: true },
   label: { type: String, required: true, index: true },
   probability: { type: Number, required: true },
-  source: { type: String, enum: ['video', 'image', 'browser-camera', 'webcam'], default: 'video' },
+  source: { type: String, enum: ['video', 'image', 'browser-camera', 'webcam', 'esp32'], default: 'video' },
   detectedAt: { type: Date, default: Date.now, index: true },
   location: { type: String, trim: true },
   propertyName: { type: String, trim: true }

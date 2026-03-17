@@ -13,7 +13,8 @@ const {
   verifyWithYolo,
   detectFromFile,
   getYoloStats,
-  detectFromDevice
+  detectFromDevice,
+  detectFromStreamUrl
 } = require('../controllers/yolocontroller');
 
 // Configure multer for file uploads
@@ -46,6 +47,9 @@ router.get('/stats', authRequired, getYoloStats);
 // Device detection endpoint (for ESP32 cameras)
 // Uses device authentication via serial number
 router.post('/device-detect', deviceAuth, detectFromDevice);
+
+// Proxy endpoint to fetch camera stream and detect (avoids CORS issues)
+router.post('/detect-from-url', authRequired, detectFromStreamUrl);
 
 module.exports = router;
 
