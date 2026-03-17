@@ -8,9 +8,6 @@ export default defineConfig({
     exclude: ['lucide-react'],
     include: ['@tensorflow/tfjs', '@tensorflow-models/mobilenet']
   },
-  define: {
-    'import.meta.env.VITE_BACKEND_URL': JSON.stringify('http://localhost:5000')
-  },
   server: {
     proxy: {
       '/api': {
